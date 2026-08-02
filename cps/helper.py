@@ -828,9 +828,9 @@ def get_series_thumbnail(series_id, resolution):
 def save_cover_from_url(url, book_path):
     try:
         if cli_param.allow_localhost:
-            img = requests.get(url, timeout=(10, 200), allow_redirects=False)  # ToDo: Error Handling
+            img = requests.get(url, timeout=(10, 200), allow_redirects=True)  # ToDo: Error Handling
         elif use_advocate:
-            img = cw_advocate.get(url, timeout=(10, 200), allow_redirects=False)      # ToDo: Error Handling
+            img = cw_advocate.get(url, timeout=(10, 200), allow_redirects=True)      # ToDo: Error Handling
         else:
             log.error("python module advocate is not installed but is needed")
             return False, _("Python module 'advocate' is not installed but is needed for cover uploads")
@@ -850,6 +850,36 @@ def save_cover_from_url(url, book_path):
     except UnacceptableAddressException as e:
         log.error("Localhost or local network was accessed for cover upload")
         return False, _("You are not allowed to access localhost or the local network for cover uploads")
+
+
+def get_cover_bytes(url):
+    """Download a cover image and return its raw bytes and content-type (SSRF-safe).
+
+    Returns (bytes, content_type) on success and (None, None) on any failure.
+    """
+    try:
+        if cli_param.allow_localhost:
+            img = requests.get(url, timeout=(10, 200), allow_redirects=True)
+        elif use_advocate:
+            img = cw_advocate.get(url, timeout=(10, 200), allow_redirects=True)
+        else:
+            log.error("python module advocate is not installed but is needed")
+            return None, None
+        img.raise_for_status()
+        content_type = img.headers.get('content-type', 'image/jpeg')
+        if content_type and content_type.split('/')[0] != 'image':
+            content_type = 'image/jpeg'
+        return img.content, content_type
+    except (socket.gaierror,
+            requests.exceptions.HTTPError,
+            requests.exceptions.InvalidURL,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout) as ex:
+        log.error(u'Cover Download Error %s', ex)
+        return None, None
+    except UnacceptableAddressException as e:
+        log.error("Localhost or local network was accessed for cover upload")
+        return None, None
 
 
 def save_cover_from_filestorage(filepath, saved_filename, img):

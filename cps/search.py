@@ -30,6 +30,8 @@ from .string_helper import strip_whitespaces
 from .usermanagement import login_required_if_no_ano
 from .render_template import render_title_template
 from .pagination import Pagination
+from .physical_merge import build_page, merge_pages, merged_pagination, physical_books_matching_search, \
+    physical_books_sorted
 
 
 search = Blueprint('search', __name__)
@@ -419,12 +421,23 @@ def render_prepare_search_form(cc):
 def render_search_results(term, offset=None, order=None, limit=None):
     if term:
         join = db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series
-        entries, result_count, pagination = calibre_db.get_search_results(term,
-                                                                          config,
-                                                                          offset,
-                                                                          order,
-                                                                          limit,
-                                                                          *join)
+        order_name = order[1] if order and len(order) > 1 and order[1] else 'new'
+        if offset is not None and limit:
+            ebook_total = calibre_db.search_query(term, config, *join).count()
+            page = int(offset / int(limit)) + 1
+            physical = physical_books_sorted(physical_books_matching_search(term), order_name)
+            merged = merge_pages(page, int(limit), ebook_total, physical)
+            entries, result_count, pagination = calibre_db.get_search_results(term,
+                                                                              config,
+                                                                              merged['ebook_offset'],
+                                                                              order,
+                                                                              merged['ebook_limit'],
+                                                                              *join)
+            entries = build_page(page, int(limit), entries, merged)
+            pagination = merged_pagination(merged, page, int(limit))
+            result_count = merged['total']
+        else:
+            entries, result_count, pagination = calibre_db.get_search_results(term, config, offset, order, limit, *join)
     else:
         entries = list()
         order = [None, None]

@@ -141,6 +141,8 @@ class Identifiers(Base):
             return "Babelio"
         elif format_type == "google":
             return "Google Books"
+        elif format_type == "openlibrary":
+            return "Open Library"
         elif format_type == "kobo":
             return "Kobo"
         elif format_type == "barnesnoble":
@@ -186,6 +188,8 @@ class Identifiers(Base):
             return "https://book.douban.com/subject/{0}".format(self.val)
         elif format_type == "google":
             return "https://books.google.com/books?id={0}".format(self.val)
+        elif format_type == "openlibrary":
+            return "https://openlibrary.org/works/{0}".format(self.val)
         elif format_type == "kobo":
             return "https://www.kobo.com/ebook/{0}".format(self.val)
         elif format_type == "barnesnoble":
@@ -856,12 +860,15 @@ class CalibreDB:
 
     # Fill indexpage with all requested data from database
     def fill_indexpage(self, page, pagesize, database, db_filter, order,
-                       join_archive_read=False, config_read_column=0, *join):
+                       join_archive_read=False, config_read_column=0, *join,
+                       offset=None, limit=None, total_count=None):
         return self.fill_indexpage_with_archived_books(page, database, pagesize, db_filter, order, False,
-                                                       join_archive_read, config_read_column, *join)
+                                                       join_archive_read, config_read_column, *join,
+                                                       offset=offset, limit=limit, total_count=total_count)
 
     def fill_indexpage_with_archived_books(self, page, database, pagesize, db_filter, order, allow_show_archived,
-                                           join_archive_read, config_read_column, *join):
+                                           join_archive_read, config_read_column, *join,
+                                           offset=None, limit=None, total_count=None):
         pagesize = pagesize or self.config.config_books_per_page
         if current_user.show_detail_random():
             random_query = self.generate_linked_query(config_read_column, database)
@@ -874,7 +881,12 @@ class CalibreDB:
             query = self.generate_linked_query(config_read_column, database)
         else:
             query = self.session.query(database)
-        off = int(int(pagesize) * (page - 1))
+        if offset is None or limit is None:
+            off = int(int(pagesize) * (page - 1))
+            lim = pagesize
+        else:
+            off = int(offset)
+            lim = int(limit)
 
         indx = len(join)
         element = 0
@@ -896,8 +908,10 @@ class CalibreDB:
         entries = list()
         pagination = list()
         try:
-            pagination = Pagination(page, pagesize, query.count())
-            entries = query.order_by(*order).offset(off).limit(pagesize).all()
+            if total_count is None:
+                total_count = query.count()
+            pagination = Pagination(page, pagesize, total_count)
+            entries = query.order_by(*order).offset(off).limit(lim).all()
         except Exception as ex:
             log.error_or_exception(ex)
         # display authors in right order

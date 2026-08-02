@@ -26,6 +26,7 @@ from markupsafe import escape
 import datetime
 import mimetypes
 from uuid import uuid4
+from urllib.parse import quote
 
 from flask import Blueprint, request, url_for, g
 from flask_babel import format_date
@@ -127,6 +128,11 @@ def escapedlink_filter(url, text):
     return "<a href='{}'>{}</a>".format(url, escape(text))
 
 
+@jinjia.app_template_filter('wiki_title')
+def wiki_title_filter(name):
+    return quote(name.replace('|', ',').replace(' ', '_'), safe=",")
+
+
 @jinjia.app_template_filter('uuidfilter')
 def uuidfilter(var):
     return uuid4()
@@ -149,6 +155,8 @@ def book_last_modified(book):
 
 @jinjia.app_template_filter('get_cover_srcset')
 def get_cover_srcset(book):
+    if getattr(book, 'is_physical', False):
+        return ''
     srcset = list()
     resolutions = {
         constants.COVER_THUMBNAIL_SMALL: 'sm',

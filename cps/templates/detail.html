@@ -135,6 +135,9 @@
             <p class="author">
                 {% for author in entry.ordered_authors %}
                     <a href="{{ url_for('web.books_list',  data='author', sort_param='stored', book_id=author.id ) }}">{{ author.name.replace('|',',') }}</a>
+                    <a href="https://en.wikipedia.org/wiki/{{ author.name.replace('|',',')|wiki_title }}" target="_blank" rel="noopener" class="author-wiki" aria-label="{{ _('Wikipedia: %(author)s', author=author.name.replace('|',',')) }}" title="{{ _('Wikipedia') }}">
+                        <span class="glyphicon glyphicon-globe" aria-hidden="true"></span>
+                    </a>
                     {% if not loop.last %}
                         &amp;
                     {% endif %}
@@ -167,17 +170,31 @@
                 </div>
             {% endif %}
 
-            {% if entry.identifiers|length > 0 %}
-                <div class="identifiers">
-                    <p>
-                        <span class="glyphicon glyphicon-link"></span>
-                        {% for identifier in entry.identifiers %}
-                            <a href="{{ identifier|escape }}" target="_blank" class="btn btn-xs btn-success"
-                               role="button">{{ identifier.format_type() }}</a>
-                        {% endfor %}
-                    </p>
-                </div>
-            {% endif %}
+            <div class="identifiers">
+                <p>
+                    <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
+                    {% set has_openlibrary = namespace(found=false) %}
+                    {% for identifier in entry.identifiers %}
+                        <a href="{{ identifier|escape }}" target="_blank" rel="noopener"
+                           class="btn btn-xs btn-success" role="button">{{ identifier.format_type() }}</a>
+                        {% if identifier.type|lower == 'openlibrary' %}
+                            {% set has_openlibrary.found = true %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if not has_openlibrary.found %}
+                        <a href="https://openlibrary.org/search?q={{ entry.title|urlencode }}" target="_blank"
+                           rel="noopener" class="btn btn-xs btn-success"
+                           role="button">{{ _('Open Library') }}</a>
+                    {% endif %}
+                    {% for identifier in entry.identifiers %}
+                        {% if identifier.type|lower == 'isbn' %}
+                            <a href="https://en.wikipedia.org/wiki/Special:BookSources/{{ identifier.val }}"
+                               target="_blank" rel="noopener" class="btn btn-xs btn-success"
+                               role="button">{{ _('Wikipedia') }}</a>
+                        {% endif %}
+                    {% endfor %}
+                </p>
+            </div>
 
             {% if entry.tags|length > 0 %}
 

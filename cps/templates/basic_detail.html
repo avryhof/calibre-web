@@ -6,7 +6,10 @@
 <h2 id="title">{{ entry.title }}</h2>
 <div>
   {% for author in entry.ordered_authors %}
-    <p>{{ author.name.replace("|",",") }}</p>
+    <p>
+      {{ author.name.replace("|",",") }}
+      <a href="https://en.wikipedia.org/wiki/{{ author.name.replace('|',',')|wiki_title }}" target="_blank" rel="noopener" aria-label="{{ _('Wikipedia: %(author)s', author=author.name.replace('|',',')) }}" title="{{ _('Wikipedia') }}">{{ _('Wikipedia') }}</a>
+    </p>
   {% endfor %}
 </div>
 
@@ -46,10 +49,23 @@
 
 {% if entry.identifiers|length > 0 %}
   <div>
+    {% set has_openlibrary = namespace(found=false) %}
+    {% for identifier in entry.identifiers %}
+      <p>
+        <a href="{{ identifier|escape }}" target="_blank" rel="noopener">{{ identifier.format_type() }}</a>
+        {% if identifier.type|lower == 'openlibrary' %}
+          {% set has_openlibrary.found = true %}
+        {% endif %}
+      </p>
+    {% endfor %}
     <p>
-      <span></span>
+      {% if not has_openlibrary.found %}
+        <a href="https://openlibrary.org/search?q={{ entry.title|urlencode }}" target="_blank" rel="noopener">{{ _('Open Library') }}</a>
+      {% endif %}
       {% for identifier in entry.identifiers %}
-          <p>{{ identifier.format_type() }}: {{ identifier|escape }}</p>
+        {% if identifier.type|lower == 'isbn' %}
+          <a href="https://en.wikipedia.org/wiki/Special:BookSources/{{ identifier.val }}" target="_blank" rel="noopener">{{ _('Wikipedia') }}</a>
+        {% endif %}
       {% endfor %}
     </p>
   </div>

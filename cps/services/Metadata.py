@@ -67,6 +67,16 @@ class Metadata:
         pass
 
     @staticmethod
+    def is_isbn(query: str) -> bool:
+        """Return True if the query is a valid ISBN-10/ISBN-13."""
+        isbn = query.replace("-", "").replace(" ", "")
+        return isbn.isdigit() and len(isbn) in (10, 13)
+
+    @staticmethod
+    def clean_isbn(query: str) -> str:
+        return query.replace("-", "").replace(" ", "")
+
+    @staticmethod
     def get_title_tokens(
         title: str, strip_joiners: bool = True
     ) -> Generator[str, None, None]:

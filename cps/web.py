@@ -21,6 +21,7 @@
 import os
 import json
 import mimetypes
+import random as random_module
 import chardet  # dependency of requests
 import copy
 from importlib.metadata import metadata
@@ -41,6 +42,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from . import constants, logger, isoLanguages, services, limiter
 from . import db, ub, config, app
 from . import calibre_db, kobo_sync_status
+from .physical_merge import (all_physical_books, build_page, ebook_filter_for_physical, fill_indexpage_merged,
+                             is_physical_filter, merge_pages, merged_pagination, parse_phys_filter,
+                             physical_by_author, physical_by_category, physical_by_format, physical_by_publisher,
+                             physical_by_rating, physical_by_series, physical_books_sorted, physical_entities,
+                             physical_filter_books, physical_no_value, phys_id, wrap_physical)
 from .search import render_search_results, render_adv_search_results
 from .gdriveutils import getFileFromEbooksFolder, do_gdrive_download
 from .helper import check_valid_domain, check_email, check_username, \
@@ -102,7 +108,8 @@ def add_security_headers(resp):
     if request.path.startswith("/author/") and config.config_use_goodreads:
         csp += " images.gr-assets.com i.gr-assets.com s.gr-assets.com"
     csp += " data:"
-    if request.endpoint == "edit-book.show_edit_book" or config.config_use_google_drive:
+    if request.endpoint == "edit-book.show_edit_book" or request.endpoint in ("physical.add", "physical.edit") \
+            or config.config_use_google_drive:
         csp += " *"
     if request.endpoint == "web.read_book":
         csp += " blob: ; style-src-elem 'self' blob: 'unsafe-inline'"
@@ -414,26 +421,32 @@ def render_books_list(data, sort_param, book_id, page):
         return render_adv_search_results(term, offset, order, config.config_books_per_page)
     else:
         website = data or "newest"
-        entries, random, pagination = calibre_db.fill_indexpage(page, 0, db.Books, True, order[0],
-                                                                True, config.config_read_column,
-                                                                db.books_series_link,
-                                                                db.Books.id == db.books_series_link.c.book,
-                                                                db.Series)
+        per_page = config.config_books_per_page
+        physical = physical_books_sorted(all_physical_books(), order[1])
+        def _fill(offset, limit, total_count):
+            return calibre_db.fill_indexpage(page, 0, db.Books, True, order[0], True, config.config_read_column,
+                                             db.books_series_link, db.Books.id == db.books_series_link.c.book,
+                                             db.Series, offset=offset, limit=limit, total_count=total_count)
+        entries, random, pagination = fill_indexpage_merged(page, per_page, physical, order[1], _fill)
         return render_title_template('index.html', random=random, entries=entries, pagination=pagination,
                                      title=_("Books"), page=website, order=order[1])
 
 
 def render_rated_books(page, book_id, order):
     if current_user.check_visibility(constants.SIDEBAR_BEST_RATED):
-        entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                db.Books,
-                                                                db.Books.ratings.any(db.Ratings.rating > 9),
-                                                                order[0],
-                                                                True, config.config_read_column,
-                                                                db.books_series_link,
-                                                                db.Books.id == db.books_series_link.c.book,
-                                                                db.Series)
-
+        per_page = config.config_books_per_page
+        physical = physical_books_sorted(all_physical_books(), order[1])
+        def _fill(offset, limit, total_count):
+            return calibre_db.fill_indexpage(page, 0,
+                                             db.Books,
+                                             db.Books.ratings.any(db.Ratings.rating > 9),
+                                             order[0],
+                                             True, config.config_read_column,
+                                             db.books_series_link,
+                                             db.Books.id == db.books_series_link.c.book,
+                                             db.Series,
+                                             offset=offset, limit=limit, total_count=total_count)
+        entries, random, pagination = fill_indexpage_merged(page, per_page, physical, order[1], _fill)
         return render_title_template('index.html', random=random, entries=entries, pagination=pagination,
                                      id=book_id, title=_("Top Rated Books"), page="rated", order=order[1])
     else:
@@ -445,6 +458,12 @@ def render_discover_books(book_id):
         entries, __, ___ = calibre_db.fill_indexpage(1, 0, db.Books, True, [func.randomblob(2)],
                                                             join_archive_read=True,
                                                             config_read_column=config.config_read_column)
+        physical = all_physical_books()
+        if physical:
+            random_module.shuffle(physical)
+            mixed = [wrap_physical(book) for book in physical] + list(entries)
+            random_module.shuffle(mixed)
+            entries = mixed[:config.config_books_per_page]
         pagination = Pagination(1, config.config_books_per_page, config.config_books_per_page)
         return render_title_template('index.html', random=false(), entries=entries, pagination=pagination, id=book_id,
                                      title=_("Discover (Random Books)"), page="discover")
@@ -470,7 +489,10 @@ def render_hot_books(page, order):
         off = int(int(config.config_books_per_page) * (page - 1))
         all_books = ub.session.query(ub.Downloads, func.count(ub.Downloads.book_id)) \
             .order_by(*order[0]).group_by(ub.Downloads.book_id)
-        hot_books = all_books.offset(off).limit(config.config_books_per_page)
+        ebook_total = all_books.count()
+        physical = physical_books_sorted(all_physical_books(), order[1])
+        merged = merge_pages(page, config.config_books_per_page, ebook_total, physical)
+        hot_books = all_books.offset(merged['ebook_offset']).limit(merged['ebook_limit'])
         entries = list()
         for book in hot_books:
             query = calibre_db.generate_linked_query(config.config_read_column, db.Books)
@@ -480,8 +502,8 @@ def render_hot_books(page, order):
                 entries.append(download_book)
             else:
                 ub.delete_download(book.Downloads.book_id)
-        num_books = entries.__len__()
-        pagination = Pagination(page, config.config_books_per_page, num_books)
+        entries = build_page(page, config.config_books_per_page, entries, merged)
+        pagination = merged_pagination(merged, page, config.config_books_per_page)
         return render_title_template('index.html', random=random, entries=entries, pagination=pagination,
                                      title=_("Hot Books (Most Downloaded)"), page="hot", order=order[1])
     else:
@@ -522,66 +544,86 @@ def render_downloaded_books(page, order, user_id):
 
 
 def render_author_books(page, author_id, order):
-    entries, __, pagination = calibre_db.fill_indexpage(page, 0,
-                                                        db.Books,
-                                                        db.Books.authors.any(db.Authors.id == author_id),
-                                                        [order[0][0], db.Series.name, db.Books.series_index],
-                                                        True, config.config_read_column,
-                                                        db.books_series_link,
-                                                        db.books_series_link.c.book == db.Books.id,
-                                                        db.Series)
+    per_page = config.config_books_per_page
+    physical_all = all_physical_books()
+    phys_filter = parse_phys_filter(author_id)
+    if phys_filter and phys_filter[0] == 'author':
+        author_name = phys_filter[1]
+        author = None
+        ebook_filter = ebook_filter_for_physical('author', author_name)
+        if ebook_filter is None:
+            ebook_filter = false()
+        physical = physical_by_author(physical_all, author_name)
+        id_value = author_id
+    else:
+        if sqlalchemy_version2:
+            author = calibre_db.session.get(db.Authors, author_id)
+        else:
+            author = calibre_db.session.query(db.Authors).get(author_id)
+        if author is None:
+            abort(404)
+        author_name = author.name.replace('|', ',')
+        ebook_filter = db.Books.authors.any(db.Authors.id == author_id)
+        physical = physical_by_author(physical_all, author_name)
+        id_value = author_id
+
+    def _fill(offset, limit, total_count):
+        return calibre_db.fill_indexpage(page, 0,
+                                         db.Books,
+                                         ebook_filter,
+                                         [order[0][0], db.Series.name, db.Books.series_index],
+                                         True, config.config_read_column,
+                                         db.books_series_link,
+                                         db.books_series_link.c.book == db.Books.id,
+                                         db.Series,
+                                         offset=offset, limit=limit, total_count=total_count)
+    entries, random, pagination = fill_indexpage_merged(page, per_page, physical, order[1], _fill)
     if entries is None or not len(entries):
         flash(_("Oops! Selected book is unavailable. File does not exist or is not accessible"),
               category="error")
         return redirect(url_for("web.index"))
-    if sqlalchemy_version2:
-        author = calibre_db.session.get(db.Authors, author_id)
-    else:
-        author = calibre_db.session.query(db.Authors).get(author_id)
-    author_name = author.name.replace('|', ',')
 
     author_info = None
     other_books = []
-    if services.goodreads_support and config.config_use_goodreads:
+    if author is not None and services.goodreads_support and config.config_use_goodreads:
         author_info = services.goodreads_support.get_author_info(author_name)
-        book_entries = [entry.Books for entry in entries]
+        book_entries = [entry.Books for entry in entries if not getattr(entry.Books, 'is_physical', False)]
         other_books = services.goodreads_support.get_other_books(author_info, book_entries)
-    return render_title_template('author.html', entries=entries, pagination=pagination, id=author_id,
+    return render_title_template('author.html', entries=entries, pagination=pagination, id=id_value,
                                  title=_("Author: %(name)s", name=author_name), author=author_info,
                                  other_books=other_books, page="author", order=order[1])
 
 
 def render_publisher_books(page, book_id, order):
+    per_page = config.config_books_per_page
+    physical_all = all_physical_books()
+    phys_filter = parse_phys_filter(book_id)
     if book_id == '-1':
-        entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                db.Books,
-                                                                db.Publishers.name == None,
-                                                                [db.Series.name, order[0][0], db.Books.series_index],
-                                                                True, config.config_read_column,
-                                                                db.books_publishers_link,
-                                                                db.Books.id == db.books_publishers_link.c.book,
-                                                                db.Publishers,
-                                                                db.books_series_link,
-                                                                db.Books.id == db.books_series_link.c.book,
-                                                                db.Series)
+        ebook_filter = db.Publishers.name == None
+        physical = physical_no_value(physical_all, 'publisher')
         publisher = _("None")
+        joins = (db.books_publishers_link, db.Books.id == db.books_publishers_link.c.book, db.Publishers,
+                 db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series)
+    elif phys_filter and phys_filter[0] == 'publisher':
+        ebook_filter = ebook_filter_for_physical('publisher', phys_filter[1])
+        physical = physical_by_publisher(physical_all, phys_filter[1])
+        publisher = phys_filter[1]
+        joins = (db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series)
     else:
-        publisher = calibre_db.session.query(db.Publishers).filter(db.Publishers.id == book_id).first()
-        if publisher:
-            entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                    db.Books,
-                                                                    db.Books.publishers.any(
-                                                                        db.Publishers.id == book_id),
-                                                                    [db.Series.name, order[0][0],
-                                                                     db.Books.series_index],
-                                                                    True, config.config_read_column,
-                                                                    db.books_series_link,
-                                                                    db.Books.id == db.books_series_link.c.book,
-                                                                    db.Series)
-            publisher = publisher.name
-        else:
+        publisher_entity = calibre_db.session.query(db.Publishers).filter(db.Publishers.id == book_id).first()
+        if not publisher_entity:
             abort(404)
+        ebook_filter = db.Books.publishers.any(db.Publishers.id == book_id)
+        publisher = publisher_entity.name
+        physical = physical_by_publisher(physical_all, publisher)
+        joins = (db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series)
 
+    def _fill(offset, limit, total_count):
+        return calibre_db.fill_indexpage(page, 0, db.Books, ebook_filter,
+                                         [db.Series.name, order[0][0], db.Books.series_index],
+                                         True, config.config_read_column,
+                                         *joins, offset=offset, limit=limit, total_count=total_count)
+    entries, random, pagination = fill_indexpage_merged(page, per_page, physical, order[1], _fill)
     return render_title_template('index.html', random=random, entries=entries, pagination=pagination, id=book_id,
                                  title=_("Publisher: %(name)s", name=publisher),
                                  page="publisher",
@@ -589,81 +631,100 @@ def render_publisher_books(page, book_id, order):
 
 
 def render_series_books(page, book_id, order):
+    per_page = config.config_books_per_page
+    physical_all = all_physical_books()
+    phys_filter = parse_phys_filter(book_id)
     if book_id == '-1':
-        entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                db.Books,
-                                                                db.Series.name == None,
-                                                                [order[0][0]],
-                                                                True, config.config_read_column,
-                                                                db.books_series_link,
-                                                                db.Books.id == db.books_series_link.c.book,
-                                                                db.Series)
+        ebook_filter = db.Series.name == None
+        physical = physical_no_value(physical_all, 'series')
         series_name = _("None")
+        joins = (db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series)
+    elif phys_filter and phys_filter[0] == 'series':
+        ebook_filter = ebook_filter_for_physical('series', phys_filter[1])
+        physical = physical_by_series(physical_all, phys_filter[1])
+        series_name = phys_filter[1]
+        joins = ()
     else:
-        series_name = calibre_db.session.query(db.Series).filter(db.Series.id == book_id).first()
-        if series_name:
-            entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                    db.Books,
-                                                                    db.Books.series.any(db.Series.id == book_id),
-                                                                    [order[0][0]],
-                                                                    True, config.config_read_column)
-            series_name = series_name.name
-        else:
+        series_entity = calibre_db.session.query(db.Series).filter(db.Series.id == book_id).first()
+        if not series_entity:
             abort(404)
+        ebook_filter = db.Books.series.any(db.Series.id == book_id)
+        series_name = series_entity.name
+        physical = physical_by_series(physical_all, series_name)
+        joins = ()
+
+    def _fill(offset, limit, total_count):
+        return calibre_db.fill_indexpage(page, 0, db.Books, ebook_filter,
+                                         [order[0][0]],
+                                         True, config.config_read_column,
+                                         *joins, offset=offset, limit=limit, total_count=total_count)
+    entries, random, pagination = fill_indexpage_merged(page, per_page, physical, order[1], _fill)
     return render_title_template('index.html', random=random, pagination=pagination, entries=entries, id=book_id,
                                  title=_("Series: %(serie)s", serie=series_name), page="series", order=order[1])
 
 
 def render_ratings_books(page, book_id, order):
+    per_page = config.config_books_per_page
+    physical_all = all_physical_books()
+    phys_filter = parse_phys_filter(book_id)
     if book_id == '-1':
-        db_filter = coalesce(db.Ratings.rating, 0) < 1
-        entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                db.Books,
-                                                                db_filter,
-                                                                [order[0][0]],
-                                                                True, config.config_read_column,
-                                                                db.books_ratings_link,
-                                                                db.Books.id == db.books_ratings_link.c.book,
-                                                                db.Ratings)
+        ebook_filter = coalesce(db.Ratings.rating, 0) < 1
+        physical = physical_no_value(physical_all, 'rating')
         title = _("Rating: None")
+        joins = (db.books_ratings_link, db.Books.id == db.books_ratings_link.c.book, db.Ratings)
+    elif phys_filter and phys_filter[0] == 'rating':
+        ebook_filter = ebook_filter_for_physical('rating', phys_filter[1])
+        physical = physical_by_rating(physical_all, phys_filter[1])
+        title = _("Rating: %(rating)s stars", rating=phys_filter[1])
+        joins = ()
     else:
         name = calibre_db.session.query(db.Ratings).filter(db.Ratings.id == book_id).first()
-        if name:
-            entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                    db.Books,
-                                                                    db.Books.ratings.any(db.Ratings.id == book_id),
-                                                                    [order[0][0]],
-                                                                    True, config.config_read_column)
-            title = _("Rating: %(rating)s stars", rating=int(name.rating / 2))
-        else:
+        if not name:
             abort(404)
+        ebook_filter = db.Books.ratings.any(db.Ratings.id == book_id)
+        physical = physical_by_rating(physical_all, int(name.rating / 2))
+        title = _("Rating: %(rating)s stars", rating=int(name.rating / 2))
+        joins = ()
+
+    def _fill(offset, limit, total_count):
+        return calibre_db.fill_indexpage(page, 0, db.Books, ebook_filter,
+                                         [order[0][0]],
+                                         True, config.config_read_column,
+                                         *joins, offset=offset, limit=limit, total_count=total_count)
+    entries, random, pagination = fill_indexpage_merged(page, per_page, physical, order[1], _fill)
     return render_title_template('index.html', random=random, pagination=pagination, entries=entries, id=book_id,
                                  title=title, page="ratings", order=order[1])
 
 
 def render_formats_books(page, book_id, order):
+    per_page = config.config_books_per_page
+    physical_all = all_physical_books()
+    phys_filter = parse_phys_filter(book_id)
     if book_id == '-1':
         name = _("None")
-        entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                db.Books,
-                                                                db.Data.format == None,
-                                                                [order[0][0]],
-                                                                True, config.config_read_column,
-                                                                db.Data)
-
+        ebook_filter = db.Data.format == None
+        physical = physical_no_value(physical_all, 'format')
+        joins = (db.Data,)
+    elif phys_filter and phys_filter[0] == 'format':
+        name = phys_filter[1]
+        ebook_filter = ebook_filter_for_physical('format', phys_filter[1])
+        physical = physical_by_format(physical_all, phys_filter[1])
+        joins = ()
     else:
-        name = calibre_db.session.query(db.Data).filter(db.Data.format == book_id.upper()).first()
-        if name:
-            name = name.format
-            entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                    db.Books,
-                                                                    db.Books.data.any(
-                                                                        db.Data.format == book_id.upper()),
-                                                                    [order[0][0]],
-                                                                    True, config.config_read_column)
-        else:
+        name_entity = calibre_db.session.query(db.Data).filter(db.Data.format == book_id.upper()).first()
+        if not name_entity:
             abort(404)
+        name = name_entity.format
+        ebook_filter = db.Books.data.any(db.Data.format == book_id.upper())
+        physical = physical_by_format(physical_all, name)
+        joins = ()
 
+    def _fill(offset, limit, total_count):
+        return calibre_db.fill_indexpage(page, 0, db.Books, ebook_filter,
+                                         [order[0][0]],
+                                         True, config.config_read_column,
+                                         *joins, offset=offset, limit=limit, total_count=total_count)
+    entries, random, pagination = fill_indexpage_merged(page, per_page, physical, order[1], _fill)
     return render_title_template('index.html', random=random, pagination=pagination, entries=entries, id=book_id,
                                  title=_("File format: %(format)s", format=name),
                                  page="formats",
@@ -671,34 +732,35 @@ def render_formats_books(page, book_id, order):
 
 
 def render_category_books(page, book_id, order):
+    per_page = config.config_books_per_page
+    physical_all = all_physical_books()
+    phys_filter = parse_phys_filter(book_id)
     if book_id == '-1':
-        entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                db.Books,
-                                                                db.Tags.name == None,
-                                                                [order[0][0], db.Series.name, db.Books.series_index],
-                                                                True, config.config_read_column,
-                                                                db.books_tags_link,
-                                                                db.Books.id == db.books_tags_link.c.book,
-                                                                db.Tags,
-                                                                db.books_series_link,
-                                                                db.Books.id == db.books_series_link.c.book,
-                                                                db.Series)
+        ebook_filter = db.Tags.name == None
+        physical = physical_no_value(physical_all, 'category')
         tagsname = _("None")
+        joins = (db.books_tags_link, db.Books.id == db.books_tags_link.c.book, db.Tags,
+                 db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series)
+    elif phys_filter and phys_filter[0] == 'category':
+        ebook_filter = ebook_filter_for_physical('category', phys_filter[1])
+        physical = physical_by_category(physical_all, phys_filter[1])
+        tagsname = phys_filter[1]
+        joins = (db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series)
     else:
-        tagsname = calibre_db.session.query(db.Tags).filter(db.Tags.id == book_id).first()
-        if tagsname:
-            entries, random, pagination = calibre_db.fill_indexpage(page, 0,
-                                                                    db.Books,
-                                                                    db.Books.tags.any(db.Tags.id == book_id),
-                                                                    [order[0][0], db.Series.name,
-                                                                     db.Books.series_index],
-                                                                    True, config.config_read_column,
-                                                                    db.books_series_link,
-                                                                    db.Books.id == db.books_series_link.c.book,
-                                                                    db.Series)
-            tagsname = tagsname.name
-        else:
+        tags_entity = calibre_db.session.query(db.Tags).filter(db.Tags.id == book_id).first()
+        if not tags_entity:
             abort(404)
+        ebook_filter = db.Books.tags.any(db.Tags.id == book_id)
+        tagsname = tags_entity.name
+        physical = physical_by_category(physical_all, tagsname)
+        joins = (db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series)
+
+    def _fill(offset, limit, total_count):
+        return calibre_db.fill_indexpage(page, 0, db.Books, ebook_filter,
+                                         [order[0][0], db.Series.name, db.Books.series_index],
+                                         True, config.config_read_column,
+                                         *joins, offset=offset, limit=limit, total_count=total_count)
+    entries, random, pagination = fill_indexpage_merged(page, per_page, physical, order[1], _fill)
     return render_title_template('index.html', random=random, entries=entries, pagination=pagination, id=book_id,
                                  title=_("Category: %(name)s", name=tagsname), page="category", order=order[1])
 
@@ -945,13 +1007,16 @@ def author_list():
         entries = calibre_db.session.query(db.Authors, func.count('books_authors_link.book').label('count')) \
             .join(db.books_authors_link).join(db.Books).filter(calibre_db.common_filters()) \
             .group_by(text('books_authors_link.author')).order_by(order).all()
-        char_list = query_char_list(db.Authors.sort, db.books_authors_link)
         # If not creating a copy, readonly databases can not display authornames with "|" in it as changing the name
         # starts a change session
         author_copy = copy.deepcopy(entries)
         for entry in author_copy:
             entry.Authors.name = entry.Authors.name.replace('|', ',')
-        return render_title_template('list.html', entries=author_copy, folder='web.books_list', charlist=char_list,
+        entries = author_copy
+        entries.extend(physical_entities(all_physical_books(), 'author'))
+        entries = sorted(entries, key=lambda x: (x[0].sort or x[0].name).lower(), reverse=not order_no)
+        char_list = generate_char_list(entries)
+        return render_title_template('list.html', entries=entries, folder='web.books_list', charlist=char_list,
                                      title="Authors", page="authorlist", data='author', order=order_no)
     else:
         abort(404)
@@ -998,7 +1063,8 @@ def publisher_list():
                            .count())
         if no_publisher_count:
             entries.append([db.Category(_("None"), "-1"), no_publisher_count])
-        entries = sorted(entries, key=lambda x: x[0].name.lower(), reverse=not order_no)
+        entries.extend(physical_entities(all_physical_books(), 'publisher'))
+        entries = sorted(entries, key=lambda x: (x[0].name or '').lower(), reverse=not order_no)
         char_list = generate_char_list(entries)
         return render_title_template('list.html', entries=entries, folder='web.books_list', charlist=char_list,
                                      title=_("Publishers"), page="publisherlist", data="publisher", order=order_no)
@@ -1028,7 +1094,9 @@ def series_list():
                             .count())
             if no_series_count:
                 entries.append([db.Category(_("None"), "-1"), no_series_count])
+            entries.extend(physical_entities(all_physical_books(), 'series'))
             entries = sorted(entries, key=lambda x: (x[0].sort or x[0].name).lower(), reverse=not order_no)
+            char_list = generate_char_list(entries)
             return render_title_template('list.html',
                                          entries=entries,
                                          folder='web.books_list',
@@ -1073,7 +1141,8 @@ def ratings_list():
                            .count())
         if no_rating_count:
             entries.append([db.Category(_("None"), "-1", -1), no_rating_count])
-        entries = sorted(entries, key=lambda x: x[0].rating, reverse=not order_no)
+        entries.extend(physical_entities(all_physical_books(), 'rating'))
+        entries = sorted(entries, key=lambda x: x[0].rating or -1, reverse=not order_no)
         return render_title_template('list.html', entries=entries, folder='web.books_list', charlist=list(),
                                      title=_("Ratings list"), page="ratingslist", data="ratings", order=order_no)
     else:
@@ -1101,6 +1170,8 @@ def formats_list():
                            .count())
         if no_format_count:
             entries.append([db.Category(_("None"), "-1"), no_format_count])
+        entries.extend(physical_entities(all_physical_books(), 'format'))
+        entries = sorted(entries, key=lambda x: (x[0].name or '').lower(), reverse=not order_no)
         return render_title_template('list.html', entries=entries, folder='web.books_list', charlist=list(),
                                      title=_("File formats list"), page="formatslist", data="formats", order=order_no)
     else:
@@ -1140,7 +1211,8 @@ def category_list():
                          .count())
         if no_tag_count:
             entries.append([db.Category(_("None"), "-1"), no_tag_count])
-        entries = sorted(entries, key=lambda x: x[0].name.lower(), reverse=not order_no)
+        entries.extend(physical_entities(all_physical_books(), 'category'))
+        entries = sorted(entries, key=lambda x: (x[0].name or '').lower(), reverse=not order_no)
         char_list = generate_char_list(entries)
         return render_title_template('list.html', entries=entries, folder='web.books_list', charlist=char_list,
                                      title=_("Categories"), page="catlist", data="category", order=order_no)

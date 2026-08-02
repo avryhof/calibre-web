@@ -40,9 +40,9 @@ except ImportError as e:
     except ImportError as e:
         OAuthConsumerMixin = BaseException
         oauth_support = False
-from sqlalchemy import create_engine, exc, exists, event, text
+from sqlalchemy import create_engine, exc, exists, event, inspect, text
 from sqlalchemy import Column, ForeignKey
-from sqlalchemy import String, Integer, SmallInteger, Boolean, DateTime, Float, JSON
+from sqlalchemy import String, Integer, SmallInteger, Boolean, DateTime, Float, JSON, LargeBinary
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.sql.expression import func
 try:
@@ -566,12 +566,81 @@ class Thumbnail(Base):
     expiration = Column(DateTime, nullable=True)
 
 
+# Physical book collection: books we own in print, managed in Calibre-Web's own database
+class PhysicalBook(Base):
+    __tablename__ = 'physical_book'
+
+    id = Column(Integer, primary_key=True)
+    isbn = Column(String(20), unique=True, index=True, default="")
+    title = Column(String, default="")
+    authors = Column(String, default="")
+    publisher = Column(String, default="")
+    published_date = Column(String, default="")
+    format = Column(String, default="")
+    location = Column(String, default="")
+    quantity = Column(Integer, default=1)
+    categories = Column(String, default="")
+    series = Column(String, default="")
+    series_index = Column(Float, default=0.0)
+    rating = Column(Float, default=0.0)
+    notes = Column(String, default="")
+    cover = Column(LargeBinary, nullable=True)
+    cover_mime = Column(String, default="image/jpeg")
+    ebook_id = Column(Integer, nullable=True)
+    created = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_modified = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return '<PhysicalBook %d:%r>' % (self.id, self.title)
+
+
+# Managed list of shelf/bookcase locations for the physical book collection
+class PhysicalLocation(Base):
+    __tablename__ = 'physical_location'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, index=True)
+
+    def __repr__(self):
+        return '<PhysicalLocation %d:%r>' % (self.id, self.name)
+
+
 # Add missing tables during migration of database
 def add_missing_tables(engine, _session):
     if not engine.dialect.has_table(engine.connect(), "archived_book"):
         ArchivedBook.__table__.create(bind=engine)
     if not engine.dialect.has_table(engine.connect(), "thumbnail"):
         Thumbnail.__table__.create(bind=engine)
+    if not engine.dialect.has_table(engine.connect(), "physical_book"):
+        PhysicalBook.__table__.create(bind=engine)
+    if not engine.dialect.has_table(engine.connect(), "physical_location"):
+        PhysicalLocation.__table__.create(bind=engine)
+
+
+# Add columns introduced after the initial physical_book table creation (idempotent)
+def migrate_physical_book_columns(engine, _session):
+    if not engine.dialect.has_table(engine.connect(), "physical_book"):
+        return
+    try:
+        existing = {col['name'] for col in inspect(engine).get_columns("physical_book")}
+    except Exception:
+        return
+    new_columns = {
+        'categories': "VARCHAR",
+        'series': "VARCHAR",
+        'series_index': "FLOAT",
+        'rating': "FLOAT",
+    }
+    try:
+        with engine.connect() as conn:
+            trans = conn.begin()
+            for name, col_type in new_columns.items():
+                if name not in existing:
+                    conn.execute(text("ALTER TABLE physical_book ADD COLUMN %s %s" % (name, col_type)))
+            trans.commit()
+    except exc.OperationalError:  # Database is not writeable
+        _session.rollback()
 
 
 # migrate all settings missing in registration table
@@ -609,6 +678,34 @@ def migrate_Database(_session):
     add_missing_tables(engine, _session)
     migrate_registration_table(engine, _session)
     migrate_user_session_table(engine, _session)
+    migrate_physical_book_sidebar(engine, _session)
+    migrate_physical_book_columns(engine, _session)
+    migrate_physical_locations(engine, _session)
+
+
+def migrate_physical_book_sidebar(engine, _session):
+    # Enable the physical books sidebar item for existing users (idempotent)
+    try:
+        for user in _session.query(User).all():
+            if not constants.has_flag(user.sidebar_view, constants.SIDEBAR_PHYSICAL):
+                user.sidebar_view = (user.sidebar_view or 0) | constants.SIDEBAR_PHYSICAL
+        _session.commit()
+    except exc.OperationalError:
+        _session.rollback()
+
+
+def migrate_physical_locations(engine, _session):
+    # Seed the "Digital Library" location and back-fill any location values already in use
+    try:
+        if not _session.query(PhysicalLocation).filter(PhysicalLocation.name == "Digital Library").first():
+            _session.add(PhysicalLocation(name="Digital Library"))
+        for name in _session.query(PhysicalBook.location).distinct().all():
+            loc = (name[0] or "").strip()
+            if loc and not _session.query(PhysicalLocation).filter(PhysicalLocation.name == loc).first():
+                _session.add(PhysicalLocation(name=loc))
+        _session.commit()
+    except exc.OperationalError:
+        _session.rollback()
 
 
 def clean_database(_session):

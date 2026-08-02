@@ -374,6 +374,18 @@ input.pill:not(:checked) + label .glyphicon { display: none; }
   width: 100px;
 }
 
+.author-wiki {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 0.85em;
+  color: #6c757d;
+}
+
+.author-wiki:hover,
+.author-wiki:focus-visible {
+  color: #337ab7;
+}
+
 #remove-from-shelves .btn,
 #shelf-action-errors { margin-left: 5px; }
 
@@ -485,3 +497,52 @@ body > div.container-fluid > div.row-fluid > div.col-sm-2::-webkit-scrollbar {
 body > div.container-fluid  {
   padding-right: 0px;
 }
+
+/* Physical book collection */
+.inline-form {
+  display: inline-block;
+  margin-left: 5px;
+}
+
+.book .cover span .quantity.badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 2;
+}
+
+.barcode-reader {
+  display: none;
+  max-width: 400px;
+  margin-bottom: 10px;
+}
+
+#reader video {
+  width: 100%;
+  border-radius: 4px;
+}
+
+.physical-meta-results {
+  margin-top: 10px;
+}
+
+.physical-meta-result {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.physical-meta-result:hover,
+.physical-meta-result:focus {
+  background-color: #f5f5f5;
+}
+
+.physical-meta-cover {
+  width: 60px;
+  height: 90px;
+  object-fit: cover;
+  margin-right: 10px;
+}
+

@@ -1,6 +1,13 @@
 {% macro book_cover(book, alt=None) -%}
     {%- set image_title = book.title if book.title else book.name -%}
     {%- set image_alt = alt if alt else image_title -%}
+    {% if book.is_physical %}
+    <img
+        src="{{ url_for('physical.cover', physical_id=book.id, c=book|last_modified) }}"
+        alt="{{ image_alt }}"
+        loading="lazy"
+    />
+    {% else %}
     {% set srcset = book|get_cover_srcset %}
     <img
         srcset="{{ srcset }}"
@@ -8,6 +15,19 @@
         alt="{{ image_alt }}"
         loading="lazy"
     />
+    {% endif %}
+{%- endmacro %}
+
+{% macro book_url(book) -%}
+{%- if book.is_physical -%}{{ url_for('physical.detail', physical_id=book.id) }}{%- else -%}{{ url_for('web.show_book', book_id=book.id) }}{%- endif -%}
+{%- endmacro %}
+
+{% macro book_modal(book) -%}
+{%- if not book.is_physical and simple == false -%}data-toggle="modal" data-target="#bookDetailsModal" data-remote="false"{%- endif -%}
+{%- endmacro %}
+
+{% macro physical_badge(book) -%}
+{%- if book.is_physical -%}<span class="badge physical glyphicon glyphicon-duplicate" title="{{ _('Physical book') }}"></span>{%- endif -%}
 {%- endmacro %}
 
 {% macro series(series, alt=None) -%}

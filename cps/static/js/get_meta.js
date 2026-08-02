@@ -47,9 +47,11 @@ $(function () {
         $("#tags").val(uniqueTags.join(", "));
         $("#languages").val(uniqueLanguages.join(", "));
         $("#rating").data("rating").setValue(Math.round(book.rating));
-        if(book.cover && $("#cover_url").length){
+        if(book.cover){
             $(".cover img").attr("src", book.cover);
-            $("#cover_url").val(book.cover);
+            if ($("#cover_url").length) {
+                $("#cover_url").val(book.cover);
+            }
         }
         $("#pubdate").val(book.publishedDate);
         $("#publisher").val(book.publisher);
@@ -172,10 +174,12 @@ $(function () {
 
     $("#get_meta").click(function () {
         populate_provider();
+        var bookIsbn = $('input[name="identifier-val-isbn"]').val();
         var bookTitle = $("#title").val();
-        $("#keyword").val(bookTitle);
-        keyword = bookTitle;
-        doSearch(bookTitle);
+        var searchKeyword = bookIsbn || bookTitle;
+        $("#keyword").val(searchKeyword);
+        keyword = searchKeyword;
+        doSearch(searchKeyword);
     });
     $("#metaModal").on("show.bs.modal", function(e) {
         $(e.relatedTarget).one('focus', function (e) {

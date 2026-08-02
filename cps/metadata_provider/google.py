@@ -38,25 +38,49 @@ class Google(Metadata):
     BOOK_URL = "https://books.google.com/books?id="
     SEARCH_URL = "https://www.googleapis.com/books/v1/volumes?q="
     ISBN_TYPE = "ISBN_13"
-    API_KEY = "&key=" + config.config_googlebooks_api_key 
+
+    def _build_url(self, query: str) -> str:
+        url = Google.SEARCH_URL + query
+        api_key = config.config_googlebooks_api_key
+        if api_key:
+            url += "&key=" + quote(api_key, safe="")
+        return url
 
     def search(
         self, query: str, generic_cover: str = "", locale: str = "en"
     ) -> Optional[List[MetaRecord]]:
-        val = list()    
+        val = list()
         if self.active:
-
-            title_tokens = list(self.get_title_tokens(query, strip_joiners=False))
-            if title_tokens:
-                tokens = [quote(t.encode("utf-8")) for t in title_tokens]
-                query = "+".join(tokens)
+            if self.is_isbn(query):
+                query = "isbn:" + self.clean_isbn(query)
+            else:
+                title_tokens = list(self.get_title_tokens(query, strip_joiners=False))
+                if title_tokens:
+                    tokens = [quote(t.encode("utf-8")) for t in title_tokens]
+                    query = "+".join(tokens)
             try:
-                results = requests.get(Google.SEARCH_URL + query + Google.API_KEY)
+                results = requests.get(self._build_url(query))
                 results.raise_for_status()
-            except Exception as e:
-                log.warning(e)
+            except requests.HTTPError as e:
+                status_code = getattr(e.response, "status_code", None)
+                if status_code == 429:
+                    log.warning(
+                        "Google Books API rate limit or quota exceeded (429). "
+                        "Results may be empty. Configure a Google Books API key in the "
+                        "admin settings if this persists."
+                    )
+                else:
+                    log.warning("Google Books API request failed (%s): %s", status_code, e)
                 return []
-            for result in results.json().get("items", []):
+            except Exception as e:
+                log.warning("Google Books API request failed: %s", e)
+                return []
+            try:
+                items = results.json().get("items", [])
+            except ValueError as e:
+                log.warning("Google Books API returned invalid JSON: %s", e)
+                return []
+            for result in items:
                 val.append(
                     self._parse_search_result(
                         result=result, generic_cover=generic_cover, locale=locale
@@ -83,11 +107,7 @@ class Google(Metadata):
         match.description = result["volumeInfo"].get("description", "")
         match.languages = self._parse_languages(result=result, locale=locale)
         match.publisher = result["volumeInfo"].get("publisher", "")
-        try:
-            datetime.strptime(result["volumeInfo"].get("publishedDate", ""), "%Y-%m-%d")
-            match.publishedDate = result["volumeInfo"].get("publishedDate", "")
-        except ValueError:
-            match.publishedDate = ""
+        match.publishedDate = self._parse_published_date(result=result)
         match.rating = result["volumeInfo"].get("averageRating", 0)
         match.series, match.series_index = "", 1
         match.tags = result["volumeInfo"].get("categories", [])
@@ -95,6 +115,16 @@ class Google(Metadata):
         match.identifiers = {"google": match.id}
         match = self._parse_isbn(result=result, match=match)
         return match
+
+    @staticmethod
+    def _parse_published_date(result: Dict) -> str:
+        published_date = result["volumeInfo"].get("publishedDate", "")
+        for date_format in ("%Y-%m-%d", "%Y-%m", "%Y"):
+            try:
+                return datetime.strptime(published_date, date_format).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return ""
 
     @staticmethod
     def _parse_isbn(result: Dict, match: MetaRecord) -> MetaRecord:

@@ -40,6 +40,7 @@ def main():
     from .search import search
     from .search_metadata import meta
     from .shelf import shelf
+    from .physical import physical
     from .tasks_status import tasks
     from .error_handler import init_errorhandler
     from .remotelogin import remotelogin
@@ -76,6 +77,7 @@ def main():
     app.register_blueprint(meta)
     app.register_blueprint(gdrive)
     app.register_blueprint(editbook)
+    app.register_blueprint(physical)
     if kobo_available:
         limiter.limit("3/minute", key_func=get_remote_address)(kobo)
         app.register_blueprint(kobo)
