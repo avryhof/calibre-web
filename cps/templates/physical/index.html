@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="discover load-more">
+  <div class="filterheader hidden-xs">
+    <div class="btn-toolbar" role="toolbar" aria-label="{{ _('Physical books toolbar') }}">
+      <form class="form-inline" method="get" action="{{ url_for('physical.books') }}">
+        <div class="input-group">
+          <label class="sr-only" for="query">{{ _('Search physical books') }}</label>
+          <input type="text" class="form-control" id="query" name="query" value="{{ query }}" placeholder="{{ _('Search physical books...') }}">
+          <span class="input-group-btn">
+            <button type="submit" class="btn btn-primary" aria-label="{{ _('Search') }}"><span class="glyphicon glyphicon-search"></span></button>
+          </span>
+        </div>
+      </form>
+      <a class="btn btn-primary" href="{{ url_for('physical.add') }}"><span class="glyphicon glyphicon-plus"></span> {{ _('Add Physical Book') }}</a>
+    </div>
+  </div>
+  <h2>{{ _('Physical Books') }}</h2>
+  <div class="row display-flex">
+    {% if entries[0] %}
+    {% for entry in entries %}
+    <div class="col-sm-3 col-lg-2 col-xs-6 book session" id="physical-books">
+      <div class="cover">
+        <a href="{{ url_for('physical.detail', physical_id=entry.id) }}">
+          <span class="img" title="{{ entry.title }}">
+            <img src="{{ url_for('physical.cover', physical_id=entry.id) }}" alt="{{ entry.title }}" loading="lazy">
+            {% if entry.quantity > 1 %}<span class="badge quantity">{{ entry.quantity }}</span>{% endif %}
+          </span>
+        </a>
+      </div>
+      <div class="meta">
+        <a href="{{ url_for('physical.detail', physical_id=entry.id) }}">
+          <p title="{{ entry.title }}" class="title">{{ entry.title|shortentitle }}</p>
+        </a>
+        {% if entry.authors %}
+        <p class="author">{{ entry.authors|shortentitle(30) }}</p>
+        {% endif %}
+        {% if entry.location %}
+        <p class="series"><span class="glyphicon glyphicon-map-marker"></span> {{ entry.location|shortentitle(30) }}</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="col-xs-12">
+      <p>{{ _('No physical books found.') }}</p>
+      <a class="btn btn-primary" href="{{ url_for('physical.add') }}"><span class="glyphicon glyphicon-plus"></span> {{ _('Add your first physical book') }}</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
