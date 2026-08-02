@@ -120,10 +120,15 @@ kobo = [
 ]
 
 [project.scripts]
-cps = "calibreweb.__main__:main"
+# cps = "calibreweb.__main__:main"
+cps = "cps.__main__:main"
 
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.packages.find]
+include = ["cps*"]
+
 [tool.setuptools.dynamic]
-version = {attr = "calibreweb.cps.constants.STABLE_VERSION"}
+# version = {attr = "calibreweb.cps.constants.STABLE_VERSION"}
+version = {attr = "cps.constants.STABLE_VERSION"}
