@@ -121,7 +121,8 @@ kobo = [
 
 [project.scripts]
 # cps = "calibreweb.__main__:main"
-cps = "cps.__main__:main"
+# cps = "cps.__main__:main"
+cps = "cps.main:main"
 
 [tool.setuptools]
 include-package-data = true
