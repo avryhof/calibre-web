@@ -427,12 +427,15 @@ def render_search_results(term, offset=None, order=None, limit=None):
             page = int(offset / int(limit)) + 1
             physical = physical_books_sorted(physical_books_matching_search(term), order_name)
             merged = merge_pages(page, int(limit), ebook_total, physical)
-            entries, result_count, pagination = calibre_db.get_search_results(term,
-                                                                              config,
-                                                                              merged['ebook_offset'],
-                                                                              order,
-                                                                              merged['ebook_limit'],
-                                                                              *join)
+            if merged['ebook_limit'] == 0:
+                entries = []
+            else:
+                entries, result_count, pagination = calibre_db.get_search_results(term,
+                                                                                  config,
+                                                                                  merged['ebook_offset'],
+                                                                                  order,
+                                                                                  merged['ebook_limit'],
+                                                                                  *join)
             entries = build_page(page, int(limit), entries, merged)
             pagination = merged_pagination(merged, page, int(limit))
             result_count = merged['total']

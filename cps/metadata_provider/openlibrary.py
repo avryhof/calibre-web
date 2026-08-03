@@ -17,7 +17,8 @@
 #  along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 # Open Library api document: https://openlibrary.org/developers/api
-from typing import Dict, List, Optional
+import concurrent.futures
+from typing import Dict, List, Optional, Union
 from urllib.parse import quote
 
 import requests
@@ -41,6 +42,7 @@ class OpenLibrary(Metadata):
         "id_goodreads,id_amazon&limit=20&q="
     )
     COVER_URL = "https://covers.openlibrary.org/b/id/{}-L.jpg"
+    MAX_SERIES_ENRICH = 5
 
     def search(
         self, query: str, generic_cover: str = "", locale: str = "en"
@@ -66,6 +68,7 @@ class OpenLibrary(Metadata):
                         result=result, generic_cover=generic_cover, locale=locale
                     )
                 )
+            self._enrich_series(val)
         return val
 
     def _parse_search_result(
@@ -93,7 +96,6 @@ class OpenLibrary(Metadata):
             "{}-01-01".format(first_publish_year) if first_publish_year else ""
         )
         match.rating = 0
-        match.series, match.series_index = "", 1
 
         match.identifiers = {"openlibrary": match.id}
         self._parse_isbn(result=result, match=match)
@@ -106,6 +108,65 @@ class OpenLibrary(Metadata):
         if cover_id:
             return OpenLibrary.COVER_URL.format(cover_id)
         return generic_cover
+
+    def _enrich_series(self, records: List[MetaRecord]) -> None:
+        if not records:
+            return
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(OpenLibrary.MAX_SERIES_ENRICH, len(records))
+        ) as executor:
+            futures = {
+                executor.submit(self._fetch_series, record): record
+                for record in records[: OpenLibrary.MAX_SERIES_ENRICH]
+            }
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    log.warning("OpenLibrary series enrichment failed: %s", e)
+
+    @staticmethod
+    def _fetch_series(match: MetaRecord) -> None:
+        try:
+            work = requests.get(
+                "{}/works/{}.json".format(OpenLibrary.BOOK_URL, match.id), timeout=10
+            )
+            work.raise_for_status()
+        except requests.RequestException as e:
+            log.warning("OpenLibrary work lookup failed for %s: %s", match.id, e)
+            return
+        series_entries = work.json().get("series")
+        if not series_entries:
+            return
+        try:
+            series_key = series_entries[0]["series"]["key"]
+            position = series_entries[0].get("position", "")
+        except (KeyError, IndexError, TypeError):
+            return
+        try:
+            series = requests.get(OpenLibrary.BOOK_URL + series_key + ".json", timeout=10)
+            series.raise_for_status()
+        except requests.RequestException as e:
+            log.warning("OpenLibrary series lookup failed for %s: %s", series_key, e)
+            return
+        series_name = series.json().get("name", "")
+        match.series = series_name
+        match.series_index = OpenLibrary._parse_series_index(position)
+
+    @staticmethod
+    def _parse_series_index(position: str) -> Optional[Union[int, float]]:
+        if not position:
+            return None
+        clean = position.replace(" ", "")
+        if "-" in clean:
+            clean = clean.split("-", 1)[0]
+        try:
+            return int(clean)
+        except ValueError:
+            try:
+                return float(clean)
+            except ValueError:
+                return None
 
     @staticmethod
     def _parse_languages(result: Dict, locale: str) -> List[str]:

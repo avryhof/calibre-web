@@ -34,15 +34,16 @@
     {% for entry in entries %}
     <div id="books" class="col-sm-3 col-lg-2 col-xs-6 book session">
       <div class="cover">
-        <a href="{{ url_for('web.show_book', book_id=entry.Books.id) }}" {% if simple==false %}data-toggle="modal" data-target="#bookDetailsModal" data-remote="false"{% endif %}>
+        <a href="{{ image.book_url(entry.Books) }}" {{ image.book_modal(entry.Books) }}>
             <span class="img" title="{{entry.Books.title}}">
-              {{ image.book_cover(entry.Books, alt=author.name|safe) }}
+              {{ image.book_cover(entry.Books) }}
+              {{ image.physical_badge(entry.Books) }}
               {% if entry[2] == True %}<span class="badge read glyphicon glyphicon-ok"></span>{% endif %}
             </span>
         </a>
       </div>
       <div class="meta">
-        <a href="{{ url_for('web.show_book', book_id=entry.Books.id) }}" {% if simple==false %}data-toggle="modal" data-target="#bookDetailsModal" data-remote="false"{% endif %}>
+        <a href="{{ image.book_url(entry.Books) }}" {{ image.book_modal(entry.Books) }}>
           <p title="{{ entry.Books.title }}" class="title">{{entry.Books.title|shortentitle}}</p>
         </a>
         <p class="author">

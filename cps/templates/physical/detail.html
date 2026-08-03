@@ -26,6 +26,18 @@
       {% if book.format %}
       <p><strong>{{ _('Format') }}:</strong> {{ book.format }}</p>
       {% endif %}
+      {% if book.series %}
+      <p><strong>{{ _('Series') }}:</strong> {{ book.series }}{% if book.series_index %}, #{{ book.series_index|int if book.series_index == book.series_index|int else book.series_index }}{% endif %}</p>
+      {% endif %}
+      {% if book.rating %}
+      <p><strong>{{ _('Rating') }}:</strong>
+        {% for i in range(5) %}<span class="glyphicon {{ 'glyphicon-star' if book.rating >= i + 1 else ('glyphicon-star-empty' if book.rating <= i else 'glyphicon-star-half') }}" aria-hidden="true"></span>{% endfor %}
+        <span class="sr-only">{{ book.rating }} / 5</span>
+      </p>
+      {% endif %}
+      {% if book.categories %}
+      <p><strong>{{ _('Categories') }}:</strong> {{ book.categories }}</p>
+      {% endif %}
       {% if book.location %}
       <p><strong>{{ _('Location') }}:</strong> {{ book.location }}</p>
       {% endif %}

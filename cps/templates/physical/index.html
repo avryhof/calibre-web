@@ -12,7 +12,19 @@
           </span>
         </div>
       </form>
+      {% if locations %}
+      <form class="form-inline" method="get" action="{{ url_for('physical.books') }}">
+        <label class="sr-only" for="location_filter">{{ _('Filter by location') }}</label>
+        <select class="form-control" id="location_filter" name="location" onchange="this.form.submit()">
+          <option value="" {% if not location_filter %}selected{% endif %}>{{ _('All locations') }}</option>
+          {% for loc in locations %}
+          <option value="{{ loc.name }}" {% if location_filter == loc.name %}selected{% endif %}>{{ loc.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
       <a class="btn btn-primary" href="{{ url_for('physical.add') }}"><span class="glyphicon glyphicon-plus"></span> {{ _('Add Physical Book') }}</a>
+      <a class="btn btn-default" href="{{ url_for('physical.locations') }}"><span class="glyphicon glyphicon-bookmark"></span> {{ _('Manage Locations') }}</a>
     </div>
   </div>
   <h2>{{ _('Physical Books') }}</h2>

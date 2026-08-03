@@ -43,10 +43,10 @@ from . import constants, logger, isoLanguages, services, limiter
 from . import db, ub, config, app
 from . import calibre_db, kobo_sync_status
 from .physical_merge import (all_physical_books, build_page, ebook_filter_for_physical, fill_indexpage_merged,
-                             is_physical_filter, merge_pages, merged_pagination, parse_phys_filter,
+                             merge_pages, merged_pagination, parse_phys_filter,
                              physical_by_author, physical_by_category, physical_by_format, physical_by_publisher,
                              physical_by_rating, physical_by_series, physical_books_sorted, physical_entities,
-                             physical_filter_books, physical_no_value, phys_id, wrap_physical)
+                             physical_no_value, wrap_physical)
 from .search import render_search_results, render_adv_search_results
 from .gdriveutils import getFileFromEbooksFolder, do_gdrive_download
 from .helper import check_valid_domain, check_email, check_username, \
@@ -699,6 +699,7 @@ def render_ratings_books(page, book_id, order):
 def render_formats_books(page, book_id, order):
     per_page = config.config_books_per_page
     physical_all = all_physical_books()
+    book_id = str(book_id)
     phys_filter = parse_phys_filter(book_id)
     if book_id == '-1':
         name = _("None")
@@ -1112,6 +1113,12 @@ def series_list():
                        .having(or_(func.max(db.Books.series_index), db.Books.series_index==""))
                        .order_by(order)
                        .all())
+            physical = [b for b in all_physical_books() if (b.series or "").strip()]
+            if physical:
+                entries.extend([(wrap_physical(book).Books, 1, book.series_index or 0.0, book.id)
+                                for book in physical])
+                entries = sorted(entries, key=lambda x: (x[0].series[0].name or '').lower(),
+                                 reverse=not order_no)
             return render_title_template('grid.html', entries=entries, folder='web.books_list', charlist=char_list,
                                          title=_("Series"), page="serieslist", data="series", bodyClass="grid-view",
                                          order=order_no)

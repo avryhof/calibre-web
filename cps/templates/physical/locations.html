@@ -1,0 +1,41 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="discover load-more">
+  <div class="filterheader hidden-xs">
+    <a class="btn btn-default" href="{{ url_for('physical.books') }}"><span class="glyphicon glyphicon-arrow-left"></span> {{ _('Back to Physical Books') }}</a>
+  </div>
+  <h2>{{ _('Location Manager') }}</h2>
+  <p>{{ _('Manage the places where your physical books are stored, e.g. bookcases or the Digital Library.') }}</p>
+
+  <form class="form-inline" method="post" action="{{ url_for('physical.location_add') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+      <label class="sr-only" for="new_location">{{ _('New location') }}</label>
+      <input type="text" class="form-control" id="new_location" name="name" placeholder="{{ _('New location name') }}">
+    </div>
+    <button type="submit" class="btn btn-primary">{{ _('Add Location') }}</button>
+  </form>
+
+  <div class="row">
+    {% if locations %}
+    <ul class="list-group col-sm-8 col-md-6">
+      {% for location in locations %}
+      <li class="list-group-item">
+        <span class="glyphicon glyphicon-bookmark"></span>
+        <a href="{{ url_for('physical.books', location=location.name) }}">{{ location.name }}</a>
+        <form class="pull-right" method="post" action="{{ url_for('physical.location_delete', location_id=location.id) }}"
+              onsubmit="return confirm('{{ _('Delete this location?') }}')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-xs btn-default" aria-label="{{ _('Delete location') }}"><span class="glyphicon glyphicon-trash"></span></button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="col-xs-12">
+      <p>{{ _('No locations yet. Add your first location (e.g. "Digital Library" or a bookcase name).') }}</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

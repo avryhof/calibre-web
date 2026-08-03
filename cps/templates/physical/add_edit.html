@@ -43,8 +43,36 @@
       <input type="text" class="form-control" id="format" name="format" value="{{ book.format if book else '' }}" placeholder="{{ _('e.g. Hardcover, Paperback') }}">
     </div>
     <div class="form-group">
-      <label for="location">{{ _('Location') }}</label>
-      <input type="text" class="form-control" id="location" name="location" value="{{ book.location if book else '' }}" placeholder="{{ _('e.g. Living room bookshelf') }}">
+      <label for="location_select">{{ _('Location') }}</label>
+      <select class="form-control" id="location_select" name="location_select">
+        <option value="" {% if not book or not book.location %}selected{% endif %}>{{ _('Select a location...') }}</option>
+        {% for loc in locations %}
+        <option value="{{ loc.name }}" {% if book and book.location == loc.name %}selected{% endif %}>{{ loc.name }}</option>
+        {% endfor %}
+        <option value="__other__" {% if book and book.location and book.location not in locations %}selected{% endif %}>{{ _('Other...') }}</option>
+      </select>
+      <input type="text" class="form-control" id="location" name="location" value="{{ book.location if book and book.location not in locations else '' }}" style="display:none;margin-top:8px" placeholder="{{ _('Enter a new location') }}" aria-label="{{ _('Custom location') }}">
+      <p class="help-block"><a href="{{ url_for('physical.locations') }}" target="_blank">{{ _('Manage locations') }}</a></p>
+    </div>
+    <div class="form-group">
+      <label for="categories">{{ _('Categories') }}</label>
+      <input type="text" class="form-control" id="categories" name="categories" value="{{ book.categories if book else '' }}" placeholder="{{ _('Comma separated') }}">
+    </div>
+    <div class="form-group">
+      <label for="series">{{ _('Series') }}</label>
+      <div class="row">
+        <div class="col-xs-8 col-sm-9">
+          <input type="text" class="form-control" id="series" name="series" value="{{ book.series if book else '' }}">
+        </div>
+        <div class="col-xs-4 col-sm-3">
+          <input type="number" step="0.1" class="form-control" id="series_index" name="series_index" value="{{ book.series_index if book and book.series_index else '0' }}" aria-label="{{ _('Series index') }}">
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="rating">{{ _('Rating') }}</label>
+      <input type="range" class="form-control" id="rating" name="rating" min="0" max="5" step="0.5" value="{{ book.rating if book else 0 }}">
+      <p class="help-block" id="rating_value">{{ _('Not rated') }}</p>
     </div>
     <div class="form-group">
       <label for="quantity">{{ _('Quantity') }}</label>
@@ -88,4 +116,36 @@
 </script>
 <script src="{{ url_for('static', filename='js/libs/html5-qrcode.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/physical.js') }}"></script>
+<script>
+  (function () {
+    var locSelect = document.getElementById('location_select');
+    var locInput = document.getElementById('location');
+    function syncLocation() {
+      if (locSelect && locInput) {
+        var show = locSelect.value === '__other__';
+        locInput.style.display = show ? 'block' : 'none';
+        if (show) {
+          locInput.setAttribute('required', '');
+        } else {
+          locInput.removeAttribute('required');
+        }
+      }
+    }
+    if (locSelect) {
+      locSelect.addEventListener('change', syncLocation);
+      syncLocation();
+    }
+    var rating = document.getElementById('rating');
+    var ratingValue = document.getElementById('rating_value');
+    if (rating && ratingValue) {
+      var labels = {{ _('Not rated') }} + '|' + {{ _('Poor') }} + '|' + {{ _('Fair') }} + '|' + {{ _('Good') }} + '|' + {{ _('Very good') }} + '|' + {{ _('Excellent') }};
+      labels = labels.split('|');
+      function syncRating() {
+        ratingValue.textContent = rating.value === '0' ? labels[0] : labels[Math.round(rating.value)];
+      }
+      rating.addEventListener('input', syncRating);
+      syncRating();
+    }
+  })();
+</script>
 {% endblock %}

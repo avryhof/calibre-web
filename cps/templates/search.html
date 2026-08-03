@@ -1,4 +1,4 @@
-{% import 'image.html' as image %}
+{% import 'image.html' as image with context %}
 {% extends "layout.html" %}
 {% block body %}
 <div class="discover">
@@ -58,16 +58,17 @@
     <div class="col-sm-3 col-lg-2 col-xs-6 book session">
       <div class="cover">
         {% if entry.Books.has_cover is defined %}
-           <a href="{{ url_for('web.show_book', book_id=entry.Books.id) }}" {% if simple==false %}data-toggle="modal" data-target="#bookDetailsModal" data-remote="false"{% endif %}>
+           <a href="{{ image.book_url(entry.Books) }}" {{ image.book_modal(entry.Books) }}>
             <span class="img" title="{{entry.Books.title}}" >
                 {{ image.book_cover(entry.Books) }}
+                {{ image.physical_badge(entry.Books) }}
                 {% if entry[2] == True %}<span class="badge read glyphicon glyphicon-ok"></span>{% endif %}
             </span>
           </a>
         {% endif %}
       </div>
       <div class="meta">
-        <a href="{{ url_for('web.show_book', book_id=entry.Books.id) }}" {% if simple==false %}data-toggle="modal" data-target="#bookDetailsModal" data-remote="false"{% endif %}>
+        <a href="{{ image.book_url(entry.Books) }}" {{ image.book_modal(entry.Books) }}>
           <p title="{{entry.Books.title}}" class="title">{{entry.Books.title|shortentitle}}</p>
         </a>
         <p class="author">

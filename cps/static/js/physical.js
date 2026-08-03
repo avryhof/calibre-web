@@ -64,6 +64,10 @@ $(function () {
         if (book.identifiers && book.identifiers.isbn) {
             $isbn.val(book.identifiers.isbn);
         }
+        if (typeof book.series !== "undefined") {
+            $("#series").val(book.series);
+            $("#series_index").val(book.series_index);
+        }
     }
 
     function lookupIsbn() {

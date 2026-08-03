@@ -19,6 +19,10 @@ PHYSICAL_PREFIX = "phys:"
 # library templates expect, so `entry.Books.*` and `entry[2]` both work.
 PhysicalEntryRow = namedtuple("PhysicalEntryRow", ["Books", "is_archived", "read_status"])
 
+# A ratings browse-list row mimics the (Ratings, count, name) SQL Row so that
+# `entry[0]`, `entry[1]` and `entry.name` all work for star rendering.
+PhysicalRatingRow = namedtuple("PhysicalRatingRow", ["entry", "count", "name"])
+
 
 def is_physical_filter(book_id):
     return isinstance(book_id, str) and book_id.startswith(PHYSICAL_PREFIX)
@@ -72,7 +76,7 @@ def physical_sort_key(order_name):
 
 
 def physical_books_sorted(books, order_name):
-    reverse = order_name in ("zyx", "authza", "pubold", "seriesdesc")
+    reverse = order_name in ("zyx", "authza", "pubold", "seriesdesc", "new", "hotdesc")
     return sorted(books, key=physical_sort_key(order_name), reverse=reverse)
 
 
@@ -288,6 +292,18 @@ def physical_books_matching_search(term):
     return result
 
 
+class _ListEntry(object):
+    """Wrapper for browse-list rows so physical ratings render with star icons."""
+
+    def __init__(self, name, entity_id, rating=None):
+        self.name = name
+        self.id = entity_id
+        self.rating = rating
+        self.sort = None
+        self.format = None
+        self.count = None
+
+
 def physical_entities(books, kind):
     """Build [(db.Category(entity), count)] for the browse lists from physical books."""
     result = {}
@@ -320,7 +336,10 @@ def physical_entities(books, kind):
                 rating = int(name) * 2
             except ValueError:
                 rating = None
-        entities.append([db.Category(name, entity_id, rating), count])
+            entity = _ListEntry(float(name), entity_id, rating)
+            entities.append(PhysicalRatingRow(entry=entity, count=count, name=float(name)))
+        else:
+            entities.append([db.Category(name, entity_id, rating), count])
     return entities
 
 

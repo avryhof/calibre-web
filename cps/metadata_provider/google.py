@@ -109,7 +109,6 @@ class Google(Metadata):
         match.publisher = result["volumeInfo"].get("publisher", "")
         match.publishedDate = self._parse_published_date(result=result)
         match.rating = result["volumeInfo"].get("averageRating", 0)
-        match.series, match.series_index = "", 1
         match.tags = result["volumeInfo"].get("categories", [])
 
         match.identifiers = {"google": match.id}

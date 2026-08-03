@@ -27,6 +27,10 @@ physical = Blueprint("physical", __name__)
 log = logger.create()
 
 
+def _locations():
+    return ub.session.query(ub.PhysicalLocation).order_by(ub.PhysicalLocation.name.asc()).all()
+
+
 def _clean_isbn(value):
     if not value:
         return ""
@@ -43,7 +47,21 @@ def _apply_form(book):
     book.publisher = request.form.get("publisher", "").strip()
     book.published_date = request.form.get("published_date", "").strip()
     book.format = request.form.get("format", "").strip()
-    book.location = request.form.get("location", "").strip()
+    location = request.form.get("location_select", "")
+    if not location:
+        location = request.form.get("location", "").strip()
+    book.location = location
+    book.categories = request.form.get("categories", "").strip()
+    book.series = request.form.get("series", "").strip()
+    try:
+        book.series_index = float(request.form.get("series_index", "0") or 0)
+    except (TypeError, ValueError):
+        book.series_index = 0.0
+    try:
+        rating = float(request.form.get("rating", "0") or 0)
+        book.rating = max(0.0, min(5.0, rating))
+    except (TypeError, ValueError):
+        book.rating = 0.0
     book.notes = request.form.get("notes", "").strip()
     try:
         book.quantity = max(1, int(request.form.get("quantity", 1)))
@@ -75,6 +93,7 @@ def _apply_cover(book):
 @user_login_required
 def books(page=1):
     query = request.args.get("query", "").strip()
+    location_filter = request.args.get("location", "").strip()
     per_page = config.config_books_per_page
     q = ub.session.query(ub.PhysicalBook)
     if query:
@@ -82,17 +101,75 @@ def books(page=1):
         q = q.filter(or_(ub.PhysicalBook.title.ilike(like),
                          ub.PhysicalBook.authors.ilike(like),
                          ub.PhysicalBook.publisher.ilike(like),
-                         ub.PhysicalBook.isbn.ilike(like)))
+                         ub.PhysicalBook.isbn.ilike(like),
+                         ub.PhysicalBook.categories.ilike(like),
+                         ub.PhysicalBook.series.ilike(like)))
+    if location_filter:
+        q = q.filter(ub.PhysicalBook.location == location_filter)
     total_count = q.count()
     entries = q.order_by(ub.PhysicalBook.last_modified.desc(),
                          ub.PhysicalBook.id.desc()).offset((page - 1) * per_page).limit(per_page).all()
     pagination = Pagination(page, per_page, total_count)
+    locations = ub.session.query(ub.PhysicalLocation).order_by(ub.PhysicalLocation.name.asc()).all()
     return render_title_template('physical/index.html',
                                  entries=entries,
                                  pagination=pagination,
                                  query=query,
+                                 location_filter=location_filter,
+                                 locations=locations,
                                  title=_("Physical Books"),
                                  page="physical")
+
+
+@physical.route("/physical/locations", methods=["GET"])
+@physical.route("/physical/locations/<int:physical_id>", methods=["GET"])
+@user_login_required
+def locations(physical_id=None):
+    locations = ub.session.query(ub.PhysicalLocation).order_by(ub.PhysicalLocation.name.asc()).all()
+    return render_title_template('physical/locations.html',
+                                 locations=locations,
+                                 selected_location=physical_id,
+                                 title=_("Location Manager"),
+                                 page="physical")
+
+
+@physical.route("/physical/location/add", methods=["POST"])
+@user_login_required
+def location_add():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash(_("Location name cannot be empty"), category="error")
+        return redirect(url_for('physical.locations'))
+    existing = ub.session.query(ub.PhysicalLocation).filter(ub.PhysicalLocation.name == name).first()
+    if existing:
+        flash(_("Location already exists"), category="error")
+        return redirect(url_for('physical.locations'))
+    try:
+        ub.session.add(ub.PhysicalLocation(name=name))
+        ub.session.commit()
+        flash(_("Location added"))
+    except (OperationalError, IntegrityError, InvalidRequestError) as e:
+        ub.session.rollback()
+        log.error_or_exception(e)
+        flash(_("An unknown error occurred, please reload the page and try again"), category="error")
+    return redirect(url_for('physical.locations'))
+
+
+@physical.route("/physical/location/delete/<location_id>", methods=["POST"])
+@user_login_required
+def location_delete(location_id):
+    location = ub.session.query(ub.PhysicalLocation).filter(ub.PhysicalLocation.id == location_id).first()
+    if not location:
+        abort(404)
+    try:
+        ub.session.delete(location)
+        ub.session.commit()
+        flash(_("Location deleted"))
+    except (OperationalError, IntegrityError, InvalidRequestError) as e:
+        ub.session.rollback()
+        log.error_or_exception(e)
+        flash(_("An unknown error occurred, please reload the page and try again"), category="error")
+    return redirect(url_for('physical.locations'))
 
 
 @physical.route("/physical/add", methods=["GET", "POST"])
@@ -103,7 +180,8 @@ def add():
         _apply_form(book)
         if not book.title and not book.isbn:
             flash(_("Please provide at least a title or an ISBN"), category="error")
-            return render_title_template('physical/add_edit.html', book=book, title=_("Add Physical Book"),
+            return render_title_template('physical/add_edit.html', book=book,
+                                         locations=_locations(), title=_("Add Physical Book"),
                                          page="physical")
         if book.isbn:
             existing = ub.session.query(ub.PhysicalBook).filter(ub.PhysicalBook.isbn == book.isbn).first()
@@ -117,11 +195,13 @@ def add():
             ub.session.rollback()
             log.error_or_exception(e)
             flash(_("An unknown error occurred, please reload the page and try again"), category="error")
-            return render_title_template('physical/add_edit.html', book=book, title=_("Add Physical Book"),
+            return render_title_template('physical/add_edit.html', book=book,
+                                         locations=_locations(), title=_("Add Physical Book"),
                                          page="physical")
         flash(_("Physical book added"))
         return redirect(url_for('physical.detail', physical_id=book.id))
-    return render_title_template('physical/add_edit.html', book=None, title=_("Add Physical Book"), page="physical")
+    return render_title_template('physical/add_edit.html', book=None, locations=_locations(),
+                                 title=_("Add Physical Book"), page="physical")
 
 
 @physical.route("/physical/detail/<int:physical_id>")
@@ -151,7 +231,8 @@ def edit(physical_id):
         _apply_form(book)
         if not book.title and not book.isbn:
             flash(_("Please provide at least a title or an ISBN"), category="error")
-            return render_title_template('physical/add_edit.html', book=book, title=_("Edit Physical Book"),
+            return render_title_template('physical/add_edit.html', book=book,
+                                         locations=_locations(), title=_("Edit Physical Book"),
                                          page="physical")
         if book.isbn and book.isbn != old_isbn:
             existing = ub.session.query(ub.PhysicalBook).filter(
@@ -166,11 +247,13 @@ def edit(physical_id):
             ub.session.rollback()
             log.error_or_exception(e)
             flash(_("An unknown error occurred, please reload the page and try again"), category="error")
-            return render_title_template('physical/add_edit.html', book=book, title=_("Edit Physical Book"),
+            return render_title_template('physical/add_edit.html', book=book,
+                                         locations=_locations(), title=_("Edit Physical Book"),
                                          page="physical")
         flash(_("Physical book updated"))
         return redirect(url_for('physical.detail', physical_id=book.id))
-    return render_title_template('physical/add_edit.html', book=book, title=_("Edit Physical Book"), page="physical")
+    return render_title_template('physical/add_edit.html', book=book, locations=_locations(),
+                                 title=_("Edit Physical Book"), page="physical")
 
 
 @physical.route("/physical/delete/<int:physical_id>", methods=["POST"])

@@ -1,4 +1,4 @@
-{% import 'image.html' as image %}
+{% import 'image.html' as image with context %}
 {% extends "layout.html" %}
 {% block body %}
 {% if current_user.show_detail_random() and page != "discover" %}
