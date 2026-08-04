@@ -104,6 +104,10 @@ def get_sidebar_config(kwargs=None):
         {"glyph": "glyphicon-duplicate", "text": _('Physical Books'), "link": 'physical.books', "id": "physical",
          "visibility": constants.SIDEBAR_PHYSICAL, 'public': (not current_user.is_anonymous),
          "show_text": _('Show Physical Books'), "config_show": content, "no_param": True, "page": "physical"})
+    sidebar.append(
+        {"glyph": "glyphicon-shopping-cart", "text": _('Book Shop'), "link": 'bookshop.index', "id": "bookshop",
+         "visibility": constants.SIDEBAR_BOOKSHOP, 'public': (not current_user.is_anonymous),
+         "show_text": _('Show Book Shop'), "config_show": content, "no_param": True, "page": "bookshop"})
     g.shelves_access = ub.session.query(ub.Shelf).filter(
         or_(ub.Shelf.is_public == 1, ub.Shelf.user_id == current_user.id)).order_by(ub.Shelf.name).all()
 

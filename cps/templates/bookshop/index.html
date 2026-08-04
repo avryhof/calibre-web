@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% block header %}
+    <link href="{{ url_for('static', filename='css/bookshop.css') }}" rel="stylesheet" media="screen">
+{% endblock %}
+{% block body %}
+<div class="bookshop container-fluid">
+  <h2>{{ _('Book Shop') }}</h2>
+  <p class="bookshop-intro">{{ _('Search free and public-domain ebooks from multiple catalogs.') }}</p>
+  <form id="bookshop-search" class="bookshop-form" novalidate>
+    <div class="bookshop-search-row">
+      <label class="sr-only" for="bookshop-query">{{ _('Search free ebooks') }}</label>
+      <input type="search" id="bookshop-query" name="q"
+             class="form-control bookshop-query"
+             placeholder="{{ _('Search free ebooks...') }}"
+             autocomplete="off" autofocus>
+      <button type="submit" class="btn btn-primary bookshop-submit">
+        <span class="glyphicon glyphicon-search" aria-hidden="true"></span>
+        <span class="sr-only">{{ _('Search') }}</span>
+      </button>
+    </div>
+    <fieldset class="bookshop-providers">
+      <legend class="sr-only">{{ _('Book catalogs to search') }}</legend>
+      {% for provider in providers %}
+      <label class="bookshop-provider">
+        <input type="checkbox" name="providers" value="{{ provider.__id__ }}" checked>
+        <span class="bookshop-provider-name">{{ provider.__name__ }}</span>
+      </label>
+      {% endfor %}
+    </fieldset>
+  </form>
+  <p id="bookshop-status" class="bookshop-status" role="status" aria-live="polite"></p>
+  <div id="bookshop-results" class="bookshop-grid" data-api-base="{{ api_base }}" aria-live="polite"></div>
+</div>
+{% endblock %}
+{% block js %}
+<script src="{{ url_for('static', filename='js/bookshop.min.js') }}"></script>
+{% endblock %}

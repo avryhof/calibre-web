@@ -99,6 +99,7 @@ SIDEBAR_ARCHIVED        = 1 << 15
 SIDEBAR_DOWNLOAD        = 1 << 16
 SIDEBAR_LIST            = 1 << 17
 SIDEBAR_PHYSICAL        = 1 << 18
+SIDEBAR_BOOKSHOP        = 1 << 19
 
 sidebar_settings = {
                 "detail_random": DETAIL_RANDOM,
@@ -118,11 +119,12 @@ sidebar_settings = {
                 "sidebar_download": SIDEBAR_DOWNLOAD,
                 "sidebar_list": SIDEBAR_LIST,
                 "sidebar_physical": SIDEBAR_PHYSICAL,
+                "sidebar_bookshop": SIDEBAR_BOOKSHOP,
             }
 
 
 ADMIN_USER_ROLES        = sum(r for r in ALL_ROLES.values()) & ~ROLE_ANONYMOUS
-ADMIN_USER_SIDEBAR      = (SIDEBAR_PHYSICAL << 1) - 1
+ADMIN_USER_SIDEBAR      = (SIDEBAR_BOOKSHOP << 1) - 1
 
 UPDATE_STABLE       = 0 << 0
 AUTO_UPDATE_STABLE  = 1 << 0

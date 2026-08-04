@@ -683,6 +683,7 @@ def migrate_Database(_session):
     migrate_physical_book_sidebar(engine, _session)
     migrate_physical_book_columns(engine, _session)
     migrate_physical_locations(engine, _session)
+    migrate_bookshop_sidebar(engine, _session)
 
 
 def migrate_physical_book_sidebar(engine, _session):
@@ -691,6 +692,17 @@ def migrate_physical_book_sidebar(engine, _session):
         for user in _session.query(User).all():
             if not constants.has_flag(user.sidebar_view, constants.SIDEBAR_PHYSICAL):
                 user.sidebar_view = (user.sidebar_view or 0) | constants.SIDEBAR_PHYSICAL
+        _session.commit()
+    except exc.OperationalError:
+        _session.rollback()
+
+
+def migrate_bookshop_sidebar(engine, _session):
+    # Enable the book shop sidebar item for existing users (idempotent)
+    try:
+        for user in _session.query(User).all():
+            if not constants.has_flag(user.sidebar_view, constants.SIDEBAR_BOOKSHOP):
+                user.sidebar_view = (user.sidebar_view or 0) | constants.SIDEBAR_BOOKSHOP
         _session.commit()
     except exc.OperationalError:
         _session.rollback()

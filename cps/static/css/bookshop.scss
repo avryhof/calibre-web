@@ -1,0 +1,224 @@
+// Book Shop styles.
+// Mobile-first flexbox layout. All interactive targets are >= 24x24 px.
+
+.bookshop {
+  max-width: 1400px;
+  margin: 0 auto;
+
+  &-intro {
+    color: #4a4a4a;
+  }
+
+  &-form {
+    margin-bottom: 1.25rem;
+  }
+
+  &-search-row {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  &-query {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 44px; // >= 24px touch target
+  }
+
+  &-submit {
+    height: 44px;
+    white-space: nowrap;
+  }
+
+  &-providers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+
+  &-provider {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 32px;
+    padding: 0.25rem 0.75rem;
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+
+    input {
+      margin: 0;
+    }
+  }
+
+  &-status {
+    min-height: 1.5em;
+    margin: 0.5rem 0;
+    color: #4a4a4a;
+  }
+
+  &-error {
+    color: #a94442;
+    font-weight: bold;
+  }
+
+  &-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin: 0 -0.5rem;
+
+    &.loading {
+      opacity: 0.6;
+    }
+  }
+
+  &-card {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 220px;
+    max-width: 320px;
+    min-width: 0;
+    margin: 0 0.5rem 1rem;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+
+    &:focus-within {
+      outline: 2px solid #337ab7;
+      outline-offset: 2px;
+    }
+  }
+
+  &-cover {
+    display: block;
+    width: 100%;
+    min-height: 150px;
+    background: #f7f7f7;
+    text-align: center;
+
+    &-img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      display: block;
+
+      &.no-cover {
+        display: none;
+      }
+    }
+  }
+
+  &-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    padding: 0.75rem;
+    min-width: 0;
+  }
+
+  &-badge {
+    align-self: flex-start;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #555;
+    background: #eee;
+    border-radius: 3px;
+    padding: 0.15rem 0.45rem;
+    margin-bottom: 0.4rem;
+  }
+
+  &-title {
+    font-weight: bold;
+    color: #1a1a1a;
+    text-decoration: none;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+
+    &:hover,
+    &:focus-visible {
+      color: #337ab7;
+      text-decoration: underline;
+    }
+  }
+
+  &-authors {
+    color: #4a4a4a;
+    margin: 0.25rem 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &-description {
+    color: #333;
+    font-size: 0.85rem;
+    margin: 0.5rem 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  &-downloads {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+
+    .btn {
+      min-height: 26px;
+      min-width: 48px;
+    }
+  }
+
+  &-footer {
+    margin: 0.5rem 0 0;
+
+    a {
+      color: #337ab7;
+    }
+  }
+}
+
+// Focus never suppressed; default focus-visible rings stay visible.
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #337ab7;
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .bookshop {
+    &-search-row {
+      flex-wrap: wrap;
+    }
+
+    &-query {
+      flex: 1 1 100%;
+    }
+
+    &-card {
+      flex: 1 1 100%;
+      max-width: none;
+    }
+
+    &-cover-img {
+      height: 160px;
+    }
+  }
+}

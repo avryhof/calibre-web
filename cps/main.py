@@ -18,9 +18,35 @@
 
 import sys
 
-from . import create_app, limiter
+from . import create_app, limiter, log
 from .jinjia import jinjia
 from flask import request
+
+
+class ApiDispatcher(object):
+    """Route /api/* requests to the FastAPI app (ASGI bridged to WSGI via a2wsgi)
+    and everything else to Flask.
+
+    A `script_name` attribute is exposed so that the custom session interface
+    (ScriptNameSessionInterface) keeps working: it reads `app.wsgi_app.script_name`
+    when setting the session cookie path."""
+
+    def __init__(self, flask_app, fastapi_wsgi):
+        self.flask_app = flask_app
+        self.fastapi_wsgi = fastapi_wsgi
+        self.prefix = "/api"
+
+    @property
+    def script_name(self):
+        return getattr(self.flask_app, "script_name", "/")
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == self.prefix or path.startswith(self.prefix + "/"):
+            environ["SCRIPT_NAME"] = (environ.get("SCRIPT_NAME", "") or "") + self.prefix
+            environ["PATH_INFO"] = path[len(self.prefix):] or "/"
+            return self.fastapi_wsgi(environ, start_response)
+        return self.flask_app(environ, start_response)
 
 
 def request_username():
@@ -41,6 +67,7 @@ def main():
     from .search_metadata import meta
     from .shelf import shelf
     from .physical import physical
+    from .bookshop import bookshop
     from .tasks_status import tasks
     from .error_handler import init_errorhandler
     from .remotelogin import remotelogin
@@ -78,11 +105,24 @@ def main():
     app.register_blueprint(gdrive)
     app.register_blueprint(editbook)
     app.register_blueprint(physical)
+    app.register_blueprint(bookshop)
     if kobo_available:
         limiter.limit("3/minute", key_func=get_remote_address)(kobo)
         app.register_blueprint(kobo)
         app.register_blueprint(kobo_auth)
     if oauth_available:
         app.register_blueprint(oauth)
+
+    # Mount the FastAPI endpoints under /api (schema browser at /api/docs).
+    # The mount is optional: if FastAPI is not installed the rest of the app
+    # still works, and the book shop page simply cannot fetch results.
+    try:
+        from a2wsgi import ASGIMiddleware
+        from .api import api as fastapi_app
+        app.wsgi_app = ApiDispatcher(app.wsgi_app, ASGIMiddleware(fastapi_app))
+        log.info("FastAPI endpoints mounted under /api")
+    except Exception as e:
+        log.warning("FastAPI endpoints unavailable: %s", e)
+
     success = web_server.start()
     sys.exit(0 if success else 1)
