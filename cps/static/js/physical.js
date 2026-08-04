@@ -1,10 +1,21 @@
 /* Physical book collection: ISBN metadata lookup (modal) + barcode scanning.
  * Depends on jQuery + underscore (main.js provides getPath() + global CSRF header for POSTs).
  */
-/* global _, Html5Qrcode, Html5QrcodeSupportedFormats, getPath, physicalI18n */
+/* global _, Html5Qrcode, Html5QrcodeSupportedFormats, getPath, physicalI18n, tinymce */
 
 $(function () {
     var msg = physicalI18n;
+
+    var language = document.documentElement.lang || "en";
+    if ($("#notes").length && typeof tinymce !== "undefined") {
+        tinymce.init({
+            selector: "#notes",
+            plugins: "code",
+            branding: false,
+            menubar: "edit view format",
+            language: language
+        });
+    }
     var $isbn = $("#isbn");
     var $title = $("#title");
     var $authors = $("#authors");
@@ -55,7 +66,7 @@ $(function () {
         var rand_id = Math.floor(Math.random() * 1000000).toString();
         var line = '<tr>';
         line += '<td><input type="text" class="form-control" name="identifier-type-' + rand_id +
-            '" required="required" value="' + name + '" aria-label="' + msg.identifier_type +
+            '" required="required" list="identifier-types" value="' + name + '" aria-label="' + msg.identifier_type +
             '" placeholder="' + msg.identifier_type + '"></td>';
         line += '<td><input type="text" class="form-control" name="identifier-val-' + rand_id +
             '" required="required" value="' + value + '" aria-label="' + msg.identifier_value +
@@ -64,15 +75,6 @@ $(function () {
             msg.remove + '</button></td>';
         line += '</tr>';
         $("#identifier-table").append(line);
-    }
-
-    function syncRatingDisplay() {
-        var rating = document.getElementById('rating');
-        var ratingValue = document.getElementById('rating_value');
-        if (rating && ratingValue) {
-            var labels = msg.rating_labels;
-            ratingValue.textContent = rating.value === '0' ? labels[0] : labels[Math.round(rating.value)];
-        }
     }
 
     function populateForm(book) {
@@ -89,12 +91,15 @@ $(function () {
             $("#series_index").val(book.series_index || 0);
         }
         if (typeof book.description !== "undefined") {
-            $("#notes").val(book.description || "");
+            var editor = tinymce ? tinymce.get("notes") : null;
+            if (editor) {
+                editor.setContent(book.description || "");
+            } else {
+                $("#notes").val(book.description || "");
+            }
         }
         if (book.rating) {
-            var rating = Math.max(0, Math.min(5, Math.round(book.rating * 2) / 2));
-            $("#rating").val(rating);
-            syncRatingDisplay();
+            $("#rating").data("rating").setValue(Math.round(book.rating));
         }
         if (book.identifiers) {
             populateIdentifiers(book.identifiers);
@@ -205,7 +210,8 @@ $(function () {
         doSearch($("#keyword").val());
     });
 
-    $("#get_meta").click(function () {
+    $("#get_meta").click(function (e) {
+        e.preventDefault();
         openModal($isbn.val().trim() || $title.val().trim());
     });
 

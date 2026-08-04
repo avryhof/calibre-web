@@ -16,7 +16,9 @@
                     <p><strong>{{ _('Author') }}:</strong> {{ book.authors }}</p>
                 {% endif %}
                 {% if book.isbn %}
-                    <p><strong>{{ _('ISBN') }}:</strong> {{ book.isbn }}</p>
+                    <p><strong>{{ _('ISBN') }}:</strong> <a
+                            href="{{ ('isbn', book.isbn)|identifier_url }}" target="_blank"
+                            rel="noopener">{{ book.isbn }}</a></p>
                 {% endif %}
                 {% if book.publisher %}
                     <p><strong>{{ _('Publisher') }}:</strong> {{ book.publisher }}</p>
@@ -44,9 +46,16 @@
                     <p><strong>{{ _('Tags') }}:</strong> {{ book.categories }}</p>
                 {% endif %}
                 {% if book.identifiers %}
-                    <p><strong>{{ _('Identifiers') }}:</strong>
-                        {% for id_type, id_val in book.identifiers.items() %}{{ id_type }}: {{ id_val }}{% if not loop.last %}, {% endif %}{% endfor %}
-                    </p>
+                    <div class="identifiers">
+                        <p>
+                            <span class="glyphicon glyphicon-link" aria-hidden="true"></span>
+                            <span class="sr-only">{{ _('Identifiers') }}:</span>
+                            {% for id_type, id_val in book.identifiers.items() %}
+                                <a href="{{ (id_type, id_val)|identifier_url }}" target="_blank" rel="noopener"
+                                   class="btn btn-xs btn-success" role="button">{{ id_type|identifier_label }}</a>
+                            {% endfor %}
+                        </p>
+                    </div>
                 {% endif %}
                 {% if book.location %}
                     <p><strong>{{ _('Location') }}:</strong> {{ book.location }}</p>
@@ -66,15 +75,12 @@
                         <div class="btn btn-default" data-back="{{ url_for('physical.books') }}"
                              id="back">{{ _('Cancel') }}</div>
                     </div>
-                    <div class="btn-toolbar" role="toolbar" aria-label="{{ _('Digital edition actions') }}">
-                        {% if ebook %}
+                    {% if ebook %}
+                        <div class="btn-toolbar" role="toolbar" aria-label="{{ _('Digital edition actions') }}">
                             <a class="btn btn-default" href="{{ url_for('web.show_book', book_id=ebook.id) }}"><span
                                     class="glyphicon glyphicon-book"></span> {{ _('View digital edition') }}</a>
-                        {% endif %}
-                        <a class="btn btn-default"
-                           href="{{ url_for('search.simple_search', query=book.title) }}"><span
-                                class="glyphicon glyphicon-search"></span> {{ _('Search for digital edition') }}</a>
-                    </div>
+                        </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

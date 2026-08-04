@@ -34,6 +34,7 @@ from .cw_login import current_user
 from .clean_html import clean_string as html_clean_string
 
 from . import constants, logger
+from .db import identifier_label, identifier_url
 
 jinjia = Blueprint('jinjia', __name__)
 log = logger.create()
@@ -126,6 +127,16 @@ def formatfloat(value, decimals=1):
 @jinjia.app_template_filter('escapedlink')
 def escapedlink_filter(url, text):
     return "<a href='{}'>{}</a>".format(url, escape(text))
+
+
+@jinjia.app_template_filter('identifier_url')
+def identifier_url_filter(identifier):
+    return identifier_url(identifier[0], identifier[1])
+
+
+@jinjia.app_template_filter('identifier_label')
+def identifier_label_filter(id_type):
+    return identifier_label(id_type)
 
 
 @jinjia.app_template_filter('wiki_title')

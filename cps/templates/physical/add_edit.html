@@ -106,9 +106,8 @@
             </div>
             <div class="form-group">
                 <label for="rating">{{ _('Rating') }}</label>
-                <input type="range" class="form-control" id="rating" name="rating" min="0" max="5" step="0.5"
-                       value="{{ book.rating if book else 0 }}">
-                <p class="help-block" id="rating_value">{{ _('Not rated') }}</p>
+                <input type="number" name="rating" id="rating" class="rating input-lg" data-clearable=""
+                       value="{{ (book.rating|round(0, 'common')|int) if book and book.rating else 0 }}">
             </div>
             <div class="form-group">
                 <label for="quantity">{{ _('Quantity') }}</label>
@@ -117,8 +116,8 @@
             </div>
             <div class="form-group">
                 <label for="notes">{{ _('Description') }}</label>
-                <textarea class="form-control" id="notes" name="notes"
-                          rows="3">{{ book.notes if book else '' }}</textarea>
+                <textarea class="form-control" name="notes" id="notes"
+                          rows="7">{{ book.notes if book else '' }}</textarea>
             </div>
 
             <div class="form-group">
@@ -127,7 +126,7 @@
                 {% for id_type, id_val in (book.identifiers if book and book.identifiers else {}).items() %}
                     <tr>
                         <td><input type="text" class="form-control" name="identifier-type-{{ id_type }}"
-                                   value="{{ id_type }}" required="required"
+                                   value="{{ id_type }}" required="required" list="identifier-types"
                                    aria-label="{{ _('Identifier type') }}" placeholder="{{ _('Identifier Type') }}"></td>
                         <td><input type="text" class="form-control" name="identifier-val-{{ id_type }}"
                                    value="{{ id_val }}" required="required"
@@ -137,6 +136,26 @@
                     </tr>
                 {% endfor %}
                 </tbody></table>
+                <datalist id="identifier-types">
+                    <option value="isbn">
+                    <option value="asin">
+                    <option value="amazon">
+                    <option value="google">
+                    <option value="openlibrary">
+                    <option value="goodreads">
+                    <option value="douban">
+                    <option value="babelio">
+                    <option value="kobo">
+                    <option value="litres">
+                    <option value="issn">
+                    <option value="doi">
+                    <option value="isfdb">
+                    <option value="storygraph">
+                    <option value="ebooks">
+                    <option value="smashwords">
+                    <option value="lubimyczytac">
+                    <option value="databazeknih">
+                </datalist>
                 <a id="add-identifier-line" class="btn btn-default">{{ _('Add Identifier') }}</a>
             </div>
 
@@ -161,7 +180,7 @@
 
                     {% if book %}{{ url_for('physical.detail', physical_id=book.id) }}{% else %}{{ url_for('physical.books') }}{% endif %}"
                class="btn btn-default">{{ _('Cancel') }}</a>
-            <a href="#" id="get_meta" class="btn btn-default" data-toggle="modal" data-target="#metaModal">{{ _('Fetch Metadata') }}</a>
+            <a href="#" id="get_meta" class="btn btn-default">{{ _('Fetch Metadata') }}</a>
             <button type="submit" class="btn btn-primary">{{ _('Save') }}</button>
         </form>
     </div>
@@ -232,10 +251,11 @@
             'identifier_type': {{ _('Identifier Type')|safe|tojson }},
             'identifier_value': {{ _('Identifier Value')|safe|tojson }},
             'remove': {{ _('Remove')|safe|tojson }},
-            'rating_labels': [{{ _('Not rated')|safe|tojson }}, {{ _('Poor')|safe|tojson }}, {{ _('Fair')|safe|tojson }}, {{ _('Good')|safe|tojson }}, {{ _('Very good')|safe|tojson }}, {{ _('Excellent')|safe|tojson }}],
         };
     </script>
     <script src="{{ url_for('static', filename='js/libs/html5-qrcode.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/libs/bootstrap-rating-input.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/libs/tinymce/tinymce.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/physical.js') }}"></script>
     <script>
         function removeIdentifierLine(el) {
@@ -244,7 +264,7 @@
         $("#add-identifier-line").click(function () {
             var rand_id = Math.floor(Math.random() * 1000000).toString();
             var line = '<tr>';
-            line += '<td><input type="text" class="form-control" name="identifier-type-' + rand_id + '" required="required" aria-label=' + {{ _('Identifier type')|safe|tojson }} + ' placeholder=' + {{ _('Identifier Type')|safe|tojson }} + '></td>';
+            line += '<td><input type="text" class="form-control" name="identifier-type-' + rand_id + '" required="required" list="identifier-types" aria-label=' + {{ _('Identifier type')|safe|tojson }} + ' placeholder=' + {{ _('Identifier Type')|safe|tojson }} + '></td>';
             line += '<td><input type="text" class="form-control" name="identifier-val-' + rand_id + '" required="required" aria-label=' + {{ _('Identifier value')|safe|tojson }} + ' placeholder=' + {{ _('Identifier Value')|safe|tojson }} + '></td>';
             line += '<td><button type="button" class="btn btn-default" onclick="removeIdentifierLine(this)">{{ _('Remove') }}</button></td>';
             line += '</tr>';
@@ -271,19 +291,6 @@
             if (locSelect) {
                 locSelect.addEventListener('change', syncLocation);
                 syncLocation();
-            }
-            var rating = document.getElementById('rating');
-            var ratingValue = document.getElementById('rating_value');
-            if (rating && ratingValue) {
-                var labels = {{ _('Not rated') }} +'|' + {{ _('Poor') }} +'|' + {{ _('Fair') }} +'|' + {{ _('Good') }} +'|' + {{ _('Very good') }} +'|' + {{ _('Excellent') }};
-                labels = labels.split('|');
-
-                function syncRating() {
-                    ratingValue.textContent = rating.value === '0' ? labels[0] : labels[Math.round(rating.value)];
-                }
-
-                rating.addEventListener('input', syncRating);
-                syncRating();
             }
         })();
     </script>

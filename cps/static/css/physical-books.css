@@ -15,3 +15,29 @@
     box-sizing: border-box;
     height: 30px;
 }
+
+/* ---- Physical book list page ---- */
+
+body.physical > div.container-fluid > div.row-fluid > div.col-sm-10 {
+    max-height: none;
+    overflow-y: visible;
+}
+
+body.physical .filterheader .btn-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-left: 0;
+    margin-bottom: 10px;
+}
+
+body.physical .filterheader .form-inline {
+    display: inline-flex;
+    align-items: center;
+    margin-bottom: 0;
+}
+
+body.physical .filterheader .btn-toolbar > * {
+    margin-left: 0;
+}

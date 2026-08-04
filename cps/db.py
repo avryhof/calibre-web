@@ -95,6 +95,109 @@ class Library_Id(Base):
     uuid = Column(String, nullable=False)
 
 
+def identifier_label(id_type):
+    """Human-readable label for an identifier type."""
+    format_type = (id_type or "").lower()
+    if format_type == 'amazon':
+        return "Amazon"
+    elif format_type.startswith("amazon_"):
+        label_amazon = "Amazon.{0}"
+        country_code = format_type[7:].lower()
+        if country_code not in Identifiers.amazon:
+            return label_amazon.format(country_code)
+        return label_amazon.format(Identifiers.amazon[country_code])
+    elif format_type == "isbn":
+        return "ISBN"
+    elif format_type == "doi":
+        return "DOI"
+    elif format_type == "douban":
+        return "Douban"
+    elif format_type == "goodreads":
+        return "Goodreads"
+    elif format_type == "babelio":
+        return "Babelio"
+    elif format_type == "google":
+        return "Google Books"
+    elif format_type == "openlibrary":
+        return "Open Library"
+    elif format_type == "kobo":
+        return "Kobo"
+    elif format_type == "barnesnoble":
+        return "Barnes & Noble"
+    elif format_type == "litres":
+        return "ЛитРес"
+    elif format_type == "issn":
+        return "ISSN"
+    elif format_type == "isfdb":
+        return "ISFDB"
+    elif format_type == "storygraph":
+        return "StoryGraph"
+    elif format_type == "ebooks":
+        return "eBooks.com"
+    elif format_type == "smashwords":
+        return "Smashwords"
+    if format_type == "lubimyczytac":
+        return "Lubimyczytac"
+    if format_type == "databazeknih":
+        return "Databáze knih"
+    else:
+        return id_type or ""
+
+
+def identifier_url(id_type, val):
+    """Provider URL for an identifier. Unknown schemes are safely URL-quoted."""
+    format_type = (id_type or "").lower()
+    if format_type == "amazon" or format_type == "asin":
+        return "https://amazon.com/dp/{0}".format(val)
+    elif format_type.startswith('amazon_'):
+        link_amazon = "https://amazon.{0}/dp/{1}"
+        country_code = format_type[7:].lower()
+        if country_code not in Identifiers.amazon:
+            return link_amazon.format(country_code, val)
+        return link_amazon.format(Identifiers.amazon[country_code], val)
+    elif format_type == "isbn":
+        return "https://www.worldcat.org/isbn/{0}".format(val)
+    elif format_type == "doi":
+        return "https://dx.doi.org/{0}".format(val)
+    elif format_type == "goodreads":
+        return "https://www.goodreads.com/book/show/{0}".format(val)
+    elif format_type == "babelio":
+        return "https://www.babelio.com/livres/titre/{0}".format(val)
+    elif format_type == "douban":
+        return "https://book.douban.com/subject/{0}".format(val)
+    elif format_type == "google":
+        return "https://books.google.com/books?id={0}".format(val)
+    elif format_type == "openlibrary":
+        return "https://openlibrary.org/works/{0}".format(val)
+    elif format_type == "kobo":
+        return "https://www.kobo.com/ebook/{0}".format(val)
+    elif format_type == "barnesnoble":
+        return "https://www.barnesandnoble.com/w/{0}".format(val)
+    elif format_type == "lubimyczytac":
+        return "https://lubimyczytac.pl/ksiazka/{0}/ksiazka".format(val)
+    elif format_type == "litres":
+        return "https://www.litres.ru/{0}".format(val)
+    elif format_type == "issn":
+        return "https://portal.issn.org/resource/ISSN/{0}".format(val)
+    elif format_type == "isfdb":
+        return "https://www.isfdb.org/cgi-bin/pl.cgi?{0}".format(val)
+    elif format_type == "databazeknih":
+        return "https://www.databazeknih.cz/knihy/{0}".format(val)
+    elif format_type == "storygraph":
+        return "https://app.thestorygraph.com/books/{0}".format(val)
+    elif format_type == "ebooks":
+        return "https://www.ebooks.com/en-us/book/{0}".format(val)
+    elif format_type == "smashwords":
+        return "https://www.smashwords.com/books/view/{0}".format(val)
+    elif (val or "").lower().startswith("javascript:"):
+        return quote(val)
+    elif (val or "").lower().startswith("data:"):
+        link, __, __ = str.partition(val, ",")
+        return link
+    else:
+        return "{0}".format(val)
+
+
 class Identifiers(Base):
     __tablename__ = 'identifiers'
 
@@ -120,103 +223,10 @@ class Identifiers(Base):
         self.book = book
 
     def format_type(self):
-        format_type = self.type.lower()
-        if format_type == 'amazon':
-            return "Amazon"
-        elif format_type.startswith("amazon_"):
-            label_amazon = "Amazon.{0}"
-            country_code = format_type[7:].lower()
-            if country_code not in self.amazon:
-                return label_amazon.format(country_code)
-            return label_amazon.format(self.amazon[country_code])
-        elif format_type == "isbn":
-            return "ISBN"
-        elif format_type == "doi":
-            return "DOI"
-        elif format_type == "douban":
-            return "Douban"
-        elif format_type == "goodreads":
-            return "Goodreads"
-        elif format_type == "babelio":
-            return "Babelio"
-        elif format_type == "google":
-            return "Google Books"
-        elif format_type == "openlibrary":
-            return "Open Library"
-        elif format_type == "kobo":
-            return "Kobo"
-        elif format_type == "barnesnoble":
-            return "Barnes & Noble"
-        elif format_type == "litres":
-            return "ЛитРес"
-        elif format_type == "issn":
-            return "ISSN"
-        elif format_type == "isfdb":
-            return "ISFDB"
-        elif format_type == "storygraph":
-            return "StoryGraph"
-        elif format_type == "ebooks":
-            return "eBooks.com"
-        elif format_type == "smashwords":
-            return "Smashwords"
-        if format_type == "lubimyczytac":
-            return "Lubimyczytac"
-        if format_type == "databazeknih":
-            return "Databáze knih"
-        else:
-            return self.type
+        return identifier_label(self.type)
 
     def __repr__(self):
-        format_type = self.type.lower()
-        if format_type == "amazon" or format_type == "asin":
-            return "https://amazon.com/dp/{0}".format(self.val)
-        elif format_type.startswith('amazon_'):
-            link_amazon = "https://amazon.{0}/dp/{1}"
-            country_code = format_type[7:].lower()
-            if country_code not in self.amazon:
-                return link_amazon.format(country_code, self.val)
-            return link_amazon.format(self.amazon[country_code], self.val)
-        elif format_type == "isbn":
-            return "https://www.worldcat.org/isbn/{0}".format(self.val)
-        elif format_type == "doi":
-            return "https://dx.doi.org/{0}".format(self.val)
-        elif format_type == "goodreads":
-            return "https://www.goodreads.com/book/show/{0}".format(self.val)
-        elif format_type == "babelio":
-            return "https://www.babelio.com/livres/titre/{0}".format(self.val)
-        elif format_type == "douban":
-            return "https://book.douban.com/subject/{0}".format(self.val)
-        elif format_type == "google":
-            return "https://books.google.com/books?id={0}".format(self.val)
-        elif format_type == "openlibrary":
-            return "https://openlibrary.org/works/{0}".format(self.val)
-        elif format_type == "kobo":
-            return "https://www.kobo.com/ebook/{0}".format(self.val)
-        elif format_type == "barnesnoble":
-            return "https://www.barnesandnoble.com/w/{0}".format(self.val)
-        elif format_type == "lubimyczytac":
-            return "https://lubimyczytac.pl/ksiazka/{0}/ksiazka".format(self.val)
-        elif format_type == "litres":
-            return "https://www.litres.ru/{0}".format(self.val)
-        elif format_type == "issn":
-            return "https://portal.issn.org/resource/ISSN/{0}".format(self.val)
-        elif format_type == "isfdb":
-            return "https://www.isfdb.org/cgi-bin/pl.cgi?{0}".format(self.val)
-        elif format_type == "databazeknih":
-            return "https://www.databazeknih.cz/knihy/{0}".format(self.val)
-        elif format_type == "storygraph":
-            return "https://app.thestorygraph.com/books/{0}".format(self.val)
-        elif format_type == "ebooks":
-            return "https://www.ebooks.com/en-us/book/{0}".format(self.val)
-        elif format_type == "smashwords":
-            return "https://www.smashwords.com/books/view/{0}".format(self.val)
-        elif self.val.lower().startswith("javascript:"):
-            return quote(self.val)
-        elif self.val.lower().startswith("data:"):
-            link, __, __ = str.partition(self.val, ",")
-            return link
-        else:
-            return "{0}".format(self.val)
+        return identifier_url(self.type, self.val)
 
 
 class Comments(Base):
