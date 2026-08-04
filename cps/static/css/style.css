@@ -170,6 +170,11 @@ table .bg-dark-danger a { color: #fff; }
   box-shadow: 0 5px 8px -6px #777;
 }
 
+#physical-book-cover .cover img {
+  max-width: 100%;
+  height: auto;
+}
+
 .datepicker.form-control {
     position: static;
 }
@@ -177,7 +182,6 @@ table .bg-dark-danger a { color: #fff; }
 .container-fluid .book .cover span .img {
   bottom: 0;
   height: 100%;
-  position: absolute;
 }
 
 .container-fluid .book .cover span img {

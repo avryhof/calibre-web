@@ -1,0 +1,17 @@
+#physical-book-cover {
+    position: static !important;
+}
+.physical-book-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 0.25em;
+}
+
+.physical-book-actions .btn {
+    display: flex;
+    align-content: center;
+    align-items: center;
+
+    box-sizing: border-box;
+    height: 30px;
+}

@@ -219,7 +219,8 @@ class WebServer(object):
             try:
                 # Also print to stdout so interactive terminals show a clear success message
                 if constants.APP_MODE not in ['development', 'test']:
-                    print(f"Calibre-Web: server started on {output}")
+                    web_proto = "https" if self.ssl_args else "http"
+                    print(f"Calibre-Web: server started on {web_proto}://{output}")
             except Exception:
                 print(f"Calibre-Web: error {output}")
                 pass
@@ -276,7 +277,8 @@ class WebServer(object):
             # Also print to stdout so interactive terminals show a clear success message
             try:
                 if constants.APP_MODE not in ['development', 'test']:
-                    print(f"Calibre-Web: server started on {output}")
+                    web_proto = "https" if self.ssl_args else "http"
+                    print(f"Calibre-Web: server started on {web_proto}://{output}")
             except Exception:
                 print(f"Calibre-Web: error {output}")
                 pass

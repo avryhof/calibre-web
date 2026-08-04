@@ -1,66 +1,82 @@
 {% extends "layout.html" %}
+{% block header %}
+    <link href="{{ url_for('static', filename='css/physical-books.css') }}" rel="stylesheet" media="screen">
+{% endblock %}
 {% block body %}
-<div class="discover load-more">
-  <div class="row">
-    <div class="col-sm-3 col-lg-2 col-xs-6 book" id="physical-book-cover">
-      <div class="cover">
-        <span class="img" title="{{ book.title }}">
-          <img src="{{ url_for('physical.cover', physical_id=book.id) }}" alt="{{ book.title }}">
-        </span>
-      </div>
+    <div class="single">
+        <div class="row">
+            <div class="col-sm-3 col-lg-3 col-xs-5" id="physical-book-cover">
+                <div class="cover">
+                    <img src="{{ url_for('physical.cover', physical_id=book.id) }}" alt="{{ book.title }}">
+                </div>
+            </div>
+            <div class="col-sm-9 col-lg-9 book-meta">
+                <h2>{{ book.title }}</h2>
+                {% if book.authors %}
+                    <p><strong>{{ _('Author') }}:</strong> {{ book.authors }}</p>
+                {% endif %}
+                {% if book.isbn %}
+                    <p><strong>{{ _('ISBN') }}:</strong> {{ book.isbn }}</p>
+                {% endif %}
+                {% if book.publisher %}
+                    <p><strong>{{ _('Publisher') }}:</strong> {{ book.publisher }}</p>
+                {% endif %}
+                {% if book.published_date %}
+                    <p><strong>{{ _('Published') }}:</strong> {{ book.published_date }}</p>
+                {% endif %}
+                {% if book.format %}
+                    <p><strong>{{ _('Format') }}:</strong> {{ book.format }}</p>
+                {% endif %}
+                {% if book.series %}
+                    <p><strong>{{ _('Series') }}:</strong> {{ book.series }}{% if book.series_index %}, #
+                        {{ book.series_index|int if book.series_index == book.series_index|int else book.series_index }}{% endif %}
+                    </p>
+                {% endif %}
+                {% if book.rating %}
+                    <p><strong>{{ _('Rating') }}:</strong>
+                        {% for i in range(5) %}
+                            <span class="glyphicon {{ 'glyphicon-star' if book.rating >= i + 1 else ('glyphicon-star-empty' if book.rating <= i else 'glyphicon-star-half') }}"
+                                  aria-hidden="true"></span>{% endfor %}
+                        <span class="sr-only">{{ book.rating }} / 5</span>
+                    </p>
+                {% endif %}
+                {% if book.categories %}
+                    <p><strong>{{ _('Tags') }}:</strong> {{ book.categories }}</p>
+                {% endif %}
+                {% if book.identifiers %}
+                    <p><strong>{{ _('Identifiers') }}:</strong>
+                        {% for id_type, id_val in book.identifiers.items() %}{{ id_type }}: {{ id_val }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    </p>
+                {% endif %}
+                {% if book.location %}
+                    <p><strong>{{ _('Location') }}:</strong> {{ book.location }}</p>
+                {% endif %}
+                {% if book.quantity %}
+                    <p><strong>{{ _('Quantity') }}:</strong> {{ book.quantity }}</p>
+                {% endif %}
+                {% if book.notes %}
+                    <p><strong>{{ _('Description') }}:</strong> {{ book.notes }}</p>
+                {% endif %}
+                <div class="more-stuff">
+                    <div class="btn-group physical-book-actions" role="group"
+                         aria-label="{{ _('Physical book actions') }}">
+                        <a class="btn btn-sm btn-primary"
+                           href="{{ url_for('physical.edit', physical_id=book.id) }}"><span
+                                class="glyphicon glyphicon-edit"></span> {{ _('Edit') }}</a>
+                        <div class="btn btn-default" data-back="{{ url_for('physical.books') }}"
+                             id="back">{{ _('Cancel') }}</div>
+                    </div>
+                    <div class="btn-toolbar" role="toolbar" aria-label="{{ _('Digital edition actions') }}">
+                        {% if ebook %}
+                            <a class="btn btn-default" href="{{ url_for('web.show_book', book_id=ebook.id) }}"><span
+                                    class="glyphicon glyphicon-book"></span> {{ _('View digital edition') }}</a>
+                        {% endif %}
+                        <a class="btn btn-default"
+                           href="{{ url_for('search.simple_search', query=book.title) }}"><span
+                                class="glyphicon glyphicon-search"></span> {{ _('Search for digital edition') }}</a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="col-sm-9">
-      <h2>{{ book.title }}</h2>
-      {% if book.authors %}
-      <p><strong>{{ _('Author') }}:</strong> {{ book.authors }}</p>
-      {% endif %}
-      {% if book.isbn %}
-      <p><strong>{{ _('ISBN') }}:</strong> {{ book.isbn }}</p>
-      {% endif %}
-      {% if book.publisher %}
-      <p><strong>{{ _('Publisher') }}:</strong> {{ book.publisher }}</p>
-      {% endif %}
-      {% if book.published_date %}
-      <p><strong>{{ _('Published') }}:</strong> {{ book.published_date }}</p>
-      {% endif %}
-      {% if book.format %}
-      <p><strong>{{ _('Format') }}:</strong> {{ book.format }}</p>
-      {% endif %}
-      {% if book.series %}
-      <p><strong>{{ _('Series') }}:</strong> {{ book.series }}{% if book.series_index %}, #{{ book.series_index|int if book.series_index == book.series_index|int else book.series_index }}{% endif %}</p>
-      {% endif %}
-      {% if book.rating %}
-      <p><strong>{{ _('Rating') }}:</strong>
-        {% for i in range(5) %}<span class="glyphicon {{ 'glyphicon-star' if book.rating >= i + 1 else ('glyphicon-star-empty' if book.rating <= i else 'glyphicon-star-half') }}" aria-hidden="true"></span>{% endfor %}
-        <span class="sr-only">{{ book.rating }} / 5</span>
-      </p>
-      {% endif %}
-      {% if book.categories %}
-      <p><strong>{{ _('Categories') }}:</strong> {{ book.categories }}</p>
-      {% endif %}
-      {% if book.location %}
-      <p><strong>{{ _('Location') }}:</strong> {{ book.location }}</p>
-      {% endif %}
-      {% if book.quantity %}
-      <p><strong>{{ _('Quantity') }}:</strong> {{ book.quantity }}</p>
-      {% endif %}
-      {% if book.notes %}
-      <p><strong>{{ _('Notes') }}:</strong> {{ book.notes }}</p>
-      {% endif %}
-      <div class="btn-toolbar" role="toolbar" aria-label="{{ _('Physical book actions') }}">
-        <a class="btn btn-primary" href="{{ url_for('physical.edit', physical_id=book.id) }}"><span class="glyphicon glyphicon-pencil"></span> {{ _('Edit') }}</a>
-        <form class="inline-form" method="post" action="{{ url_for('physical.delete', physical_id=book.id) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-danger" onclick="return confirm({{ _('Delete this physical book?')|tojson }});"><span class="glyphicon glyphicon-trash"></span> {{ _('Delete') }}</button>
-        </form>
-      </div>
-      <div class="btn-toolbar" role="toolbar" aria-label="{{ _('Digital edition actions') }}">
-        {% if ebook %}
-        <a class="btn btn-default" href="{{ url_for('web.show_book', book_id=ebook.id) }}"><span class="glyphicon glyphicon-book"></span> {{ _('View digital edition') }}</a>
-        {% endif %}
-        <a class="btn btn-default" href="{{ url_for('search.simple_search', query=book.title) }}"><span class="glyphicon glyphicon-search"></span> {{ _('Search for digital edition') }}</a>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}

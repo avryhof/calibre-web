@@ -63,6 +63,14 @@ def _apply_form(book):
     except (TypeError, ValueError):
         book.rating = 0.0
     book.notes = request.form.get("notes", "").strip()
+    identifiers = {}
+    for key, value in request.form.items():
+        if key.startswith("identifier-type-"):
+            idx = key[len("identifier-type-"):]
+            id_val = request.form.get("identifier-val-" + idx, "").strip()
+            if value.strip() and id_val:
+                identifiers[value.strip()] = id_val
+    book.identifiers = identifiers
     try:
         book.quantity = max(1, int(request.form.get("quantity", 1)))
     except (TypeError, ValueError):

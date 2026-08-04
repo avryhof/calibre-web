@@ -584,6 +584,7 @@ class PhysicalBook(Base):
     series_index = Column(Float, default=0.0)
     rating = Column(Float, default=0.0)
     notes = Column(String, default="")
+    identifiers = Column(JSON, default={})
     cover = Column(LargeBinary, nullable=True)
     cover_mime = Column(String, default="image/jpeg")
     ebook_id = Column(Integer, nullable=True)
@@ -631,6 +632,7 @@ def migrate_physical_book_columns(engine, _session):
         'series': "VARCHAR",
         'series_index': "FLOAT",
         'rating': "FLOAT",
+        'identifiers': "JSON",
     }
     try:
         with engine.connect() as conn:

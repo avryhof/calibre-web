@@ -1,151 +1,290 @@
 {% extends "layout.html" %}
 {% block body %}
-<div class="discover load-more">
-  <h2>{% if book %}{{ _('Edit Physical Book') }}{% else %}{{ _('Add Physical Book') }}{% endif %}</h2>
-  <form method="post" enctype="multipart/form-data"
-        action="{% if book %}{{ url_for('physical.edit', physical_id=book.id) }}{% else %}{{ url_for('physical.add') }}{% endif %}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="cover_url" id="cover_url" value="">
+    <div class="col-sm-3 col-lg-3 col-xs-12">
+        <div class="cover" id="cover-preview">
+            <img src="
 
-    <div class="form-group">
-      <label for="isbn">{{ _('ISBN') }}</label>
-      <div class="input-group">
-        <input type="text" class="form-control" id="isbn" name="isbn" value="{{ book.isbn if book else '' }}">
-        <span class="input-group-btn">
+                    {% if book and book.cover %}{{ url_for('physical.cover', physical_id=book.id) }}{% else %}{{ url_for('static', filename='generic_cover.jpg') }}{% endif %}"
+                 alt="{{ _('Cover preview') }}">
+        </div>
+        {% if book and current_user.role_delete_books() %}
+            <form class="text-center" method="post" action="{{ url_for('physical.delete', physical_id=book.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger"
+                        onclick="return confirm({{ _('Delete this physical book?')|tojson }});"><span
+                        class="glyphicon glyphicon-trash"></span> {{ _('Delete') }}</button>
+            </form>
+        {% endif %}
+    </div>
+    <div class="col-sm-9 col-xs-12">
+        <h2>{% if book %}{{ _('Edit Physical Book') }}{% else %}{{ _('Add Physical Book') }}{% endif %}</h2>
+        <form method="post" enctype="multipart/form-data"
+              action="
+
+                      {% if book %}{{ url_for('physical.edit', physical_id=book.id) }}{% else %}{{ url_for('physical.add') }}{% endif %}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="form-group">
+                <label for="isbn">{{ _('ISBN') }}</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="isbn" name="isbn"
+                           value="{{ book.isbn if book else '' }}">
+                    <span class="input-group-btn">
           <button type="button" class="btn btn-default" id="lookup-isbn">{{ _('Look up') }}</button>
-          <button type="button" class="btn btn-default" id="scan-barcode"><span class="glyphicon glyphicon-camera"></span> {{ _('Scan barcode') }}</button>
+          <button type="button" class="btn btn-default" id="scan-barcode"><span
+                  class="glyphicon glyphicon-camera"></span> {{ _('Scan barcode') }}</button>
         </span>
-      </div>
-      <p class="help-block">{{ _('Enter or scan the ISBN to fetch metadata, or fill in the fields manually.') }}</p>
-    </div>
+                </div>
+                <p class="help-block">{{ _('Enter or scan the ISBN and click Look up to fetch metadata, or fill in the fields manually.') }}</p>
+            </div>
 
-    <div id="reader" class="barcode-reader"></div>
-    <div id="meta-info"></div>
+            <div id="reader" class="barcode-reader"></div>
 
-    <div class="form-group">
-      <label for="title">{{ _('Title') }}</label>
-      <input type="text" class="form-control" id="title" name="title" value="{{ book.title if book else '' }}">
+            <div class="form-group">
+                <label for="title">{{ _('Title') }}</label>
+                <input type="text" class="form-control" id="title" name="title"
+                       value="{{ book.title if book else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="authors">{{ _('Author(s)') }}</label>
+                <input type="text" class="form-control" id="authors" name="authors"
+                       value="{{ book.authors if book else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="publisher">{{ _('Publisher') }}</label>
+                <input type="text" class="form-control" id="publisher" name="publisher"
+                       value="{{ book.publisher if book else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="published_date">{{ _('Published') }}</label>
+                <input type="text" class="form-control" id="published_date" name="published_date"
+                       value="{{ book.published_date if book else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="format">{{ _('Format') }}</label>
+                <input type="text" class="form-control" id="format" name="format"
+                       value="{{ book.format if book else '' }}"
+                       placeholder="{{ _('e.g. Hardcover, Paperback') }}">
+            </div>
+            <div class="form-group">
+                <label for="location_select">{{ _('Location') }}</label>
+                <select class="form-control" id="location_select" name="location_select">
+                    <option value=""
+                            {% if not book or not book.location %}selected{% endif %}>{{ _('Select a location...') }}</option>
+                    {% for loc in locations %}
+                        <option value="{{ loc.name }}"
+                                {% if book and book.location == loc.name %}selected{% endif %}>{{ loc.name }}</option>
+                    {% endfor %}
+                    <option value="__other__"
+                            {% if book and book.location and book.location not in locations %}selected{% endif %}>{{ _('Other...') }}</option>
+                </select>
+                <input type="text" class="form-control" id="location" name="location"
+                       value="{{ book.location if book and book.location not in locations else '' }}"
+                       style="display:none;margin-top:8px" placeholder="{{ _('Enter a new location') }}"
+                       aria-label="{{ _('Custom location') }}">
+                <p class="help-block"><a href="{{ url_for('physical.locations') }}"
+                                         target="_blank">{{ _('Manage locations') }}</a></p>
+            </div>
+            <div class="form-group">
+                <label for="categories">{{ _('Tags') }}</label>
+                <input type="text" class="form-control" id="categories" name="categories"
+                       value="{{ book.categories if book else '' }}" placeholder="{{ _('Comma separated') }}">
+            </div>
+            <div class="form-group">
+                <label for="series">{{ _('Series') }}</label>
+                <div class="row">
+                    <div class="col-xs-8 col-sm-9">
+                        <input type="text" class="form-control" id="series" name="series"
+                               value="{{ book.series if book else '' }}">
+                    </div>
+                    <div class="col-xs-4 col-sm-3">
+                        <input type="number" step="0.1" class="form-control" id="series_index" name="series_index"
+                               value="{{ book.series_index if book and book.series_index else '0' }}"
+                               aria-label="{{ _('Series index') }}">
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="rating">{{ _('Rating') }}</label>
+                <input type="range" class="form-control" id="rating" name="rating" min="0" max="5" step="0.5"
+                       value="{{ book.rating if book else 0 }}">
+                <p class="help-block" id="rating_value">{{ _('Not rated') }}</p>
+            </div>
+            <div class="form-group">
+                <label for="quantity">{{ _('Quantity') }}</label>
+                <input type="number" class="form-control" id="quantity" name="quantity" min="1"
+                       value="{{ book.quantity if book else 1 }}">
+            </div>
+            <div class="form-group">
+                <label for="notes">{{ _('Description') }}</label>
+                <textarea class="form-control" id="notes" name="notes"
+                          rows="3">{{ book.notes if book else '' }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label>{{ _('Identifiers') }}</label>
+                <table class="table" id="identifier-table"><tbody>
+                {% for id_type, id_val in (book.identifiers if book and book.identifiers else {}).items() %}
+                    <tr>
+                        <td><input type="text" class="form-control" name="identifier-type-{{ id_type }}"
+                                   value="{{ id_type }}" required="required"
+                                   aria-label="{{ _('Identifier type') }}" placeholder="{{ _('Identifier Type') }}"></td>
+                        <td><input type="text" class="form-control" name="identifier-val-{{ id_type }}"
+                                   value="{{ id_val }}" required="required"
+                                   aria-label="{{ _('Identifier value') }}" placeholder="{{ _('Identifier Value') }}"></td>
+                        <td><button type="button" class="btn btn-default"
+                                    onclick="removeIdentifierLine(this)">{{ _('Remove') }}</button></td>
+                    </tr>
+                {% endfor %}
+                </tbody></table>
+                <a id="add-identifier-line" class="btn btn-default">{{ _('Add Identifier') }}</a>
+            </div>
+
+            <div class="form-group">
+                <label for="cover_url">{{ _('Fetch Cover from URL (JPEG - Image will be downloaded and stored in database)') }}</label>
+                <input type="text" class="form-control" name="cover_url" id="cover_url" value="">
+            </div>
+
+            <div class="form-group">
+                <label for="cover">{{ _('Upload Cover from Local Disk') }}</label>
+                <input type="file" class="form-control" id="cover" name="cover" accept="image/*">
+            </div>
+
+            <div class="form-group">
+                <label for="ebook_id">{{ _('Digital edition book ID') }}</label>
+                <input type="text" class="form-control" id="ebook_id" name="ebook_id"
+                       value="{{ book.ebook_id if book and book.ebook_id else '' }}">
+                <p class="help-block">{{ _('Optional: ID of the matching ebook in the library. Use the search button on the detail page to find it.') }}</p>
+            </div>
+
+            <a href="
+
+                    {% if book %}{{ url_for('physical.detail', physical_id=book.id) }}{% else %}{{ url_for('physical.books') }}{% endif %}"
+               class="btn btn-default">{{ _('Cancel') }}</a>
+            <a href="#" id="get_meta" class="btn btn-default" data-toggle="modal" data-target="#metaModal">{{ _('Fetch Metadata') }}</a>
+            <button type="submit" class="btn btn-primary">{{ _('Save') }}</button>
+        </form>
     </div>
-    <div class="form-group">
-      <label for="authors">{{ _('Author(s)') }}</label>
-      <input type="text" class="form-control" id="authors" name="authors" value="{{ book.authors if book else '' }}">
-    </div>
-    <div class="form-group">
-      <label for="publisher">{{ _('Publisher') }}</label>
-      <input type="text" class="form-control" id="publisher" name="publisher" value="{{ book.publisher if book else '' }}">
-    </div>
-    <div class="form-group">
-      <label for="published_date">{{ _('Published') }}</label>
-      <input type="text" class="form-control" id="published_date" name="published_date" value="{{ book.published_date if book else '' }}">
-    </div>
-    <div class="form-group">
-      <label for="format">{{ _('Format') }}</label>
-      <input type="text" class="form-control" id="format" name="format" value="{{ book.format if book else '' }}" placeholder="{{ _('e.g. Hardcover, Paperback') }}">
-    </div>
-    <div class="form-group">
-      <label for="location_select">{{ _('Location') }}</label>
-      <select class="form-control" id="location_select" name="location_select">
-        <option value="" {% if not book or not book.location %}selected{% endif %}>{{ _('Select a location...') }}</option>
-        {% for loc in locations %}
-        <option value="{{ loc.name }}" {% if book and book.location == loc.name %}selected{% endif %}>{{ loc.name }}</option>
-        {% endfor %}
-        <option value="__other__" {% if book and book.location and book.location not in locations %}selected{% endif %}>{{ _('Other...') }}</option>
-      </select>
-      <input type="text" class="form-control" id="location" name="location" value="{{ book.location if book and book.location not in locations else '' }}" style="display:none;margin-top:8px" placeholder="{{ _('Enter a new location') }}" aria-label="{{ _('Custom location') }}">
-      <p class="help-block"><a href="{{ url_for('physical.locations') }}" target="_blank">{{ _('Manage locations') }}</a></p>
-    </div>
-    <div class="form-group">
-      <label for="categories">{{ _('Categories') }}</label>
-      <input type="text" class="form-control" id="categories" name="categories" value="{{ book.categories if book else '' }}" placeholder="{{ _('Comma separated') }}">
-    </div>
-    <div class="form-group">
-      <label for="series">{{ _('Series') }}</label>
-      <div class="row">
-        <div class="col-xs-8 col-sm-9">
-          <input type="text" class="form-control" id="series" name="series" value="{{ book.series if book else '' }}">
+{% endblock %}
+
+{% block modal %}
+    <div class="modal fade" id="metaModal" tabindex="-1" role="dialog" aria-labelledby="metaModalLabel">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></button>
+                    <h4 class="modal-title text-center" id="metaModalLabel">{{ _('Fetch Metadata') }}</h4>
+                    <form class="padded-bottom" id="meta-search">
+                        <div class="input-group">
+                            <label class="sr-only" for="keyword">{{ _('Keyword') }}</label>
+                            <input type="text" class="form-control" id="keyword" name="keyword"
+                                   placeholder="{{ _("Search keyword") }}">
+                            <span class="input-group-btn">
+                                <button type="submit" class="btn btn-primary" id="do-search">{{ _("Search") }}</button>
+                            </span>
+                        </div>
+                    </form>
+                    <div class="text-center"><strong>{{ _('Click the cover to load metadata to the form') }}</strong></div>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center padded-bottom" id="metadata_provider"></div>
+                    <div id="meta-info"></div>
+                </div>
+                <div class="modal-footer">
+                    <button id="meta_close" type="button" class="btn btn-default" data-dismiss="modal">{{ _('Close') }}</button>
+                </div>
+            </div>
         </div>
-        <div class="col-xs-4 col-sm-3">
-          <input type="number" step="0.1" class="form-control" id="series_index" name="series_index" value="{{ book.series_index if book and book.series_index else '0' }}" aria-label="{{ _('Series index') }}">
-        </div>
-      </div>
     </div>
-    <div class="form-group">
-      <label for="rating">{{ _('Rating') }}</label>
-      <input type="range" class="form-control" id="rating" name="rating" min="0" max="5" step="0.5" value="{{ book.rating if book else 0 }}">
-      <p class="help-block" id="rating_value">{{ _('Not rated') }}</p>
-    </div>
-    <div class="form-group">
-      <label for="quantity">{{ _('Quantity') }}</label>
-      <input type="number" class="form-control" id="quantity" name="quantity" min="1" value="{{ book.quantity if book else 1 }}">
-    </div>
-    <div class="form-group">
-      <label for="notes">{{ _('Notes') }}</label>
-      <textarea class="form-control" id="notes" name="notes" rows="3">{{ book.notes if book else '' }}</textarea>
-    </div>
-
-    <div class="form-group">
-      <label for="cover">{{ _('Cover') }}</label>
-      <div class="cover" id="cover-preview">
-        <img src="{% if book and book.cover %}{{ url_for('physical.cover', physical_id=book.id) }}{% else %}{{ url_for('static', filename='generic_cover.jpg') }}{% endif %}" alt="{{ _('Cover preview') }}">
-      </div>
-      <input type="file" class="form-control" id="cover" name="cover" accept="image/*">
-    </div>
-
-    <div class="form-group">
-      <label for="ebook_id">{{ _('Digital edition book ID') }}</label>
-      <input type="text" class="form-control" id="ebook_id" name="ebook_id" value="{{ book.ebook_id if book and book.ebook_id else '' }}">
-      <p class="help-block">{{ _('Optional: ID of the matching ebook in the library. Use the search button on the detail page to find it.') }}</p>
-    </div>
-
-    <a href="{% if book %}{{ url_for('physical.detail', physical_id=book.id) }}{% else %}{{ url_for('physical.books') }}{% endif %}" class="btn btn-default">{{ _('Cancel') }}</a>
-    <button type="submit" class="btn btn-primary">{{ _('Save') }}</button>
-  </form>
-</div>
 {% endblock %}
 
 {% block js %}
-<script>
-  var physicalI18n = {
-    'loading': {{ _('Loading...')|safe|tojson }},
-    'search_error': {{ _('Search error!')|safe|tojson }},
-    'no_result': {{ _('No Result(s) found! Please try another keyword.')|safe|tojson }},
-    'scanning': {{ _('Point the camera at the barcode...')|safe|tojson }},
-    'scan_error': {{ _('Could not access the camera. Check the camera permission or type the ISBN manually.')|safe|tojson }},
-    'stop_scan': {{ _('Stop scanning')|safe|tojson }},
-  };
-</script>
-<script src="{{ url_for('static', filename='js/libs/html5-qrcode.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/physical.js') }}"></script>
-<script>
-  (function () {
-    var locSelect = document.getElementById('location_select');
-    var locInput = document.getElementById('location');
-    function syncLocation() {
-      if (locSelect && locInput) {
-        var show = locSelect.value === '__other__';
-        locInput.style.display = show ? 'block' : 'none';
-        if (show) {
-          locInput.setAttribute('required', '');
-        } else {
-          locInput.removeAttribute('required');
+    <script type="text/template" id="template-book-result">
+        <li class="media" data-related="<%= source.id %>">
+            <img class="pull-left img-responsive" src="<%= cover || "{{ url_for('static', filename='img/academicpaper.svg') }}" %>"
+                 alt="Cover">
+            <div class="media-body">
+                <h4 class="media-heading">
+                    <a class="meta_title" href="<%= url %>" target="_blank" rel="noopener"><%= title %></a>
+                </h4>
+                <p class="meta_author">{{ _('Author') }}: <%= authors.join(" & ") %></p>
+                <% if (publisher) { %>
+                    <p class="meta_publisher">{{ _('Publisher') }}: <%= publisher %></p>
+                <% } %>
+                <% if (description) { %>
+                    <p class="meta_description">{{ _('Description') }}: <%= description %></p>
+                <% } %>
+                <p>{{ _('Source') }}:
+                    <a class="meta_source" href="<%= source.link %>" target="_blank" rel="noopener"><%= source.description %></a>
+                </p>
+            </div>
+        </li>
+    </script>
+    <script>
+        var physicalI18n = {
+            'loading': {{ _('Loading...')|safe|tojson }},
+            'search_error': {{ _('Search error!')|safe|tojson }},
+            'no_result': {{ _('No Result(s) found! Please try another keyword.')|safe|tojson }},
+            'scanning': {{ _('Point the camera at the barcode...')|safe|tojson }},
+            'scan_error': {{ _('Could not access the camera. Check the camera permission or type the ISBN manually.')|safe|tojson }},
+            'stop_scan': {{ _('Stop scanning')|safe|tojson }},
+            'identifier_type': {{ _('Identifier Type')|safe|tojson }},
+            'identifier_value': {{ _('Identifier Value')|safe|tojson }},
+            'remove': {{ _('Remove')|safe|tojson }},
+            'rating_labels': [{{ _('Not rated')|safe|tojson }}, {{ _('Poor')|safe|tojson }}, {{ _('Fair')|safe|tojson }}, {{ _('Good')|safe|tojson }}, {{ _('Very good')|safe|tojson }}, {{ _('Excellent')|safe|tojson }}],
+        };
+    </script>
+    <script src="{{ url_for('static', filename='js/libs/html5-qrcode.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/physical.js') }}"></script>
+    <script>
+        function removeIdentifierLine(el) {
+            $(el).parent().parent().remove();
         }
-      }
-    }
-    if (locSelect) {
-      locSelect.addEventListener('change', syncLocation);
-      syncLocation();
-    }
-    var rating = document.getElementById('rating');
-    var ratingValue = document.getElementById('rating_value');
-    if (rating && ratingValue) {
-      var labels = {{ _('Not rated') }} + '|' + {{ _('Poor') }} + '|' + {{ _('Fair') }} + '|' + {{ _('Good') }} + '|' + {{ _('Very good') }} + '|' + {{ _('Excellent') }};
-      labels = labels.split('|');
-      function syncRating() {
-        ratingValue.textContent = rating.value === '0' ? labels[0] : labels[Math.round(rating.value)];
-      }
-      rating.addEventListener('input', syncRating);
-      syncRating();
-    }
-  })();
-</script>
+        $("#add-identifier-line").click(function () {
+            var rand_id = Math.floor(Math.random() * 1000000).toString();
+            var line = '<tr>';
+            line += '<td><input type="text" class="form-control" name="identifier-type-' + rand_id + '" required="required" aria-label=' + {{ _('Identifier type')|safe|tojson }} + ' placeholder=' + {{ _('Identifier Type')|safe|tojson }} + '></td>';
+            line += '<td><input type="text" class="form-control" name="identifier-val-' + rand_id + '" required="required" aria-label=' + {{ _('Identifier value')|safe|tojson }} + ' placeholder=' + {{ _('Identifier Value')|safe|tojson }} + '></td>';
+            line += '<td><button type="button" class="btn btn-default" onclick="removeIdentifierLine(this)">{{ _('Remove') }}</button></td>';
+            line += '</tr>';
+            $("#identifier-table").append(line);
+        });
+    </script>
+    <script>
+        (function () {
+            var locSelect = document.getElementById('location_select');
+            var locInput = document.getElementById('location');
+
+            function syncLocation() {
+                if (locSelect && locInput) {
+                    var show = locSelect.value === '__other__';
+                    locInput.style.display = show ? 'block' : 'none';
+                    if (show) {
+                        locInput.setAttribute('required', '');
+                    } else {
+                        locInput.removeAttribute('required');
+                    }
+                }
+            }
+
+            if (locSelect) {
+                locSelect.addEventListener('change', syncLocation);
+                syncLocation();
+            }
+            var rating = document.getElementById('rating');
+            var ratingValue = document.getElementById('rating_value');
+            if (rating && ratingValue) {
+                var labels = {{ _('Not rated') }} +'|' + {{ _('Poor') }} +'|' + {{ _('Fair') }} +'|' + {{ _('Good') }} +'|' + {{ _('Very good') }} +'|' + {{ _('Excellent') }};
+                labels = labels.split('|');
+
+                function syncRating() {
+                    ratingValue.textContent = rating.value === '0' ? labels[0] : labels[Math.round(rating.value)];
+                }
+
+                rating.addEventListener('input', syncRating);
+                syncRating();
+            }
+        })();
+    </script>
 {% endblock %}
