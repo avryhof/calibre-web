@@ -16,6 +16,7 @@ class Gutenberg(BookshopProvider):
     __id__ = "gutenberg"
     DESCRIPTION = "Over 70,000 free public-domain ebooks."
     HOMEPAGE = "https://www.gutenberg.org/"
+    DOWNLOAD_HOSTS = ("gutenberg.org", "www.gutenberg.org")
     SEARCH_URL = "https://gutendex.com/books"
     BOOK_URL = "https://www.gutenberg.org/ebooks/{}"
     HEADERS = {
@@ -36,11 +37,14 @@ class Gutenberg(BookshopProvider):
     }
     FORMAT_ORDER = ("EPUB", "MOBI", "PDF", "HTML", "TXT")
 
-    def search(self, query: str, limit: int = 12):
+    def search(self, query: str, limit: int = 12, search_type: str = "title"):
         val = []
         try:
             params = {"search": query.strip()}
-            if self.is_isbn(query):
+            # Gutendex has no dedicated author field filter, but its `search`
+            # parameter matches authors as well as titles. ISBN cleaning only
+            # makes sense for title searches.
+            if search_type == "title" and self.is_isbn(query):
                 params["search"] = self.clean_isbn(query)
             results = requests.get(
                 self.SEARCH_URL,

@@ -71,6 +71,10 @@ class BookshopProvider:
     DESCRIPTION = ""
     HOMEPAGE = ""
     TIMEOUT = 20
+    #: Hosts (netloc) the provider's download URLs may point at. Used by the
+    #: add-to-library flow as an SSRF allowlist: only URLs whose host is listed
+    #: here will be fetched server-side.
+    DOWNLOAD_HOSTS = ()
 
     def __init__(self):
         self.active = True
@@ -79,7 +83,12 @@ class BookshopProvider:
         self.active = state
 
     @abc.abstractmethod
-    def search(self, query: str, limit: int = 12) -> List[BookshopRecord]:
+    def search(
+        self,
+        query: str,
+        limit: int = 12,
+        search_type: str = "title",
+    ) -> List[BookshopRecord]:
         pass
 
     def source_info(self) -> BookshopSourceInfo:

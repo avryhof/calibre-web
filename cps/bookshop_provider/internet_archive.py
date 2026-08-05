@@ -21,6 +21,7 @@ class InternetArchive(BookshopProvider):
     __id__ = "internet_archive"
     DESCRIPTION = "Millions of digitized books and texts."
     HOMEPAGE = "https://archive.org/"
+    DOWNLOAD_HOSTS = ("archive.org", "archive.org.br")
     SEARCH_URL = "https://archive.org/advancedsearch.php"
     METADATA_URL = "https://archive.org/metadata/{}"
     DETAIL_URL = "https://archive.org/details/{}"
@@ -53,15 +54,21 @@ class InternetArchive(BookshopProvider):
         # Keep Solr queries simple: drop characters that would break the query.
         return " ".join(c for c in query.strip().split() if c)
 
-    def search(self, query: str, limit: int = 12):
+    def search(self, query: str, limit: int = 12, search_type: str = "title"):
         val = []
-        if self.is_isbn(query):
+        if self.is_isbn(query) and search_type == "title":
             query = "identifier:{}".format(self.clean_isbn(query))
         terms = self._clean_query(query)
-        solr_query = (
-            "(title:({terms}) OR {terms}) "
-            "AND mediatype:texts AND -access-restricted-item:true"
-        ).format(terms=terms)
+        if search_type == "author":
+            solr_query = (
+                "author:({terms}) "
+                "AND mediatype:texts AND -access-restricted-item:true"
+            ).format(terms=terms)
+        else:
+            solr_query = (
+                "(title:({terms}) OR {terms}) "
+                "AND mediatype:texts AND -access-restricted-item:true"
+            ).format(terms=terms)
         try:
             results = requests.get(
                 self.SEARCH_URL,

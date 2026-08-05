@@ -32,6 +32,37 @@
     white-space: nowrap;
   }
 
+  &-search-type {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    border: 0;
+    padding: 0;
+    margin: 0 0 0.75rem;
+
+    &-label {
+      color: #4a4a4a;
+    }
+  }
+
+  &-type-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 32px;
+    padding: 0.25rem 0.75rem;
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+
+    input {
+      margin: 0;
+    }
+  }
+
   &-providers {
     display: flex;
     flex-wrap: wrap;
@@ -191,6 +222,35 @@
     a {
       color: #337ab7;
     }
+  }
+
+  &-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+
+    .btn {
+      min-height: 30px;
+    }
+  }
+
+  &-add {
+    &:hover,
+    &:focus-visible {
+      text-decoration: none;
+    }
+  }
+
+  &-added {
+    color: #fff;
+  }
+
+  &-add-error {
+    flex-basis: 100%;
+    font-size: 0.8rem;
+    font-weight: normal;
   }
 }
 

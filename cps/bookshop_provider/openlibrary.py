@@ -20,6 +20,7 @@ class OpenLibrary(BookshopProvider):
     __id__ = "openlibrary"
     DESCRIPTION = "The open library of the Internet Archive."
     HOMEPAGE = "https://openlibrary.org/"
+    DOWNLOAD_HOSTS = ("openlibrary.org", "archive.org")
     SEARCH_URL = "https://openlibrary.org/search.json"
     BOOK_URL = "https://openlibrary.org"
     COVER_URL = "https://covers.openlibrary.org/b/id/{}-L.jpg"
@@ -34,13 +35,16 @@ class OpenLibrary(BookshopProvider):
         "Accept": "application/json",
     }
 
-    def search(self, query: str, limit: int = 12):
+    def search(self, query: str, limit: int = 12, search_type: str = "title"):
         val = []
         params = {
-            "q": query.strip(),
             "fields": "key,title,author_name,first_publish_year,cover_i,isbn,subject",
             "limit": limit,
         }
+        if search_type == "author":
+            params["author"] = query.strip()
+        else:
+            params["q"] = query.strip()
         results = self._get(params)
         if results is None:
             return val

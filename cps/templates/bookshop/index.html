@@ -18,6 +18,18 @@
         <span class="sr-only">{{ _('Search') }}</span>
       </button>
     </div>
+    <fieldset class="bookshop-search-type">
+      <legend class="sr-only">{{ _('Search by') }}</legend>
+      <span class="bookshop-search-type-label">{{ _('Search by:') }}</span>
+      <label class="bookshop-type-option">
+        <input type="radio" name="search_type" value="title" checked>
+        <span>{{ _('Title') }}</span>
+      </label>
+      <label class="bookshop-type-option">
+        <input type="radio" name="search_type" value="author">
+        <span>{{ _('Author') }}</span>
+      </label>
+    </fieldset>
     <fieldset class="bookshop-providers">
       <legend class="sr-only">{{ _('Book catalogs to search') }}</legend>
       {% for provider in providers %}
@@ -29,7 +41,8 @@
     </fieldset>
   </form>
   <p id="bookshop-status" class="bookshop-status" role="status" aria-live="polite"></p>
-  <div id="bookshop-results" class="bookshop-grid" data-api-base="{{ api_base }}" aria-live="polite"></div>
+  <div id="bookshop-results" class="bookshop-grid" data-api-base="{{ api_base }}"
+       data-allow-upload="{{ 'true' if allow_upload else 'false' }}" aria-live="polite"></div>
 </div>
 {% endblock %}
 {% block js %}

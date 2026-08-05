@@ -1,9 +1,14 @@
 /* Book Shop search front-end.
  * Fetches results from the FastAPI endpoint mounted under /api and renders
- * result cards. All user-visible strings are written via textContent so that
- * provider content cannot inject markup (XSS). */
+ * result cards. Supports title/author search modes and, when the current user
+ * may upload, an "Add to library" action that imports a free/public-domain
+ * ebook directly into the library.
+ * All user-visible strings are written via textContent so that provider
+ * content cannot inject markup (XSS). */
 (function () {
   'use strict';
+
+  var PREFERRED_FORMATS = ['EPUB', 'PDF', 'MOBI', 'AZW3', 'KEPUB', 'TXT'];
 
   document.addEventListener('DOMContentLoaded', function () {
     var form = document.getElementById('bookshop-search');
@@ -16,12 +21,19 @@
     }
 
     var apiBase = grid.getAttribute('data-api-base') || '/api';
+    var allowUpload = grid.getAttribute('data-allow-upload') === 'true';
+    var scriptRoot = apiBase.replace(/\/api$/, '');
 
     function selectedProviders() {
       var checks = form.querySelectorAll('input[name="providers"]:checked');
       return Array.prototype.map.call(checks, function (c) {
         return c.value;
       });
+    }
+
+    function selectedSearchType() {
+      var checked = form.querySelector('input[name="search_type"]:checked');
+      return (checked && checked.value) || 'title';
     }
 
     function runSearch(q) {
@@ -36,6 +48,7 @@
 
       var params = new URLSearchParams();
       params.set('q', q);
+      params.set('search_type', selectedSearchType());
       var providers = selectedProviders();
       if (providers.length) {
         params.set('providers', providers.join(','));
@@ -89,6 +102,76 @@
         fragment.appendChild(renderCard(item));
       });
       grid.appendChild(fragment);
+    }
+
+    function pickFormat(item) {
+      var formats = item.formats || {};
+      for (var i = 0; i < PREFERRED_FORMATS.length; i++) {
+        if (formats[PREFERRED_FORMATS[i]]) {
+          return PREFERRED_FORMATS[i];
+        }
+      }
+      return Object.keys(formats)[0];
+    }
+
+    function addToLibrary(item, button) {
+      var format = pickFormat(item);
+      if (!format) {
+        return;
+      }
+      button.disabled = true;
+      button.textContent = 'Adding...';
+      fetch(apiBase + '/bookshop/add', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          provider: item.source.id,
+          format: format,
+          url: item.formats[format],
+          title: item.title || '',
+          authors: item.authors || [],
+          description: (item.description || '').slice(0, 5000)
+        })
+      }).then(function (response) {
+        if (response.status === 401) {
+          throw new Error('not-authenticated');
+        }
+        if (response.status === 403) {
+          throw new Error('no-permission');
+        }
+        if (!response.ok) {
+          throw new Error('http-' + response.status);
+        }
+        return response.json();
+      }).then(function (data) {
+        var link = document.createElement('a');
+        link.className = 'btn btn-success btn-xs bookshop-added';
+        link.href = scriptRoot + (data.url || ('/book/' + data.book_id));
+        link.textContent = 'Added - View in library';
+        if (button.parentNode) {
+          button.parentNode.replaceChild(link, button);
+        }
+      }).catch(function (err) {
+        button.disabled = false;
+        button.textContent = 'Add to library';
+        var msg = 'Could not add this book.';
+        if (err && err.message === 'not-authenticated') {
+          msg = 'Your session has expired. Please sign in again.';
+        } else if (err && err.message === 'no-permission') {
+          msg = 'You do not have permission to add books to the library.';
+        } else if (err && err.message === 'http-413') {
+          msg = 'This book file is too large to add.';
+        } else if (err && err.message === 'http-429') {
+          msg = 'Too many requests. Please try again later.';
+        }
+        var status = document.createElement('span');
+        status.className = 'bookshop-error bookshop-add-error';
+        status.textContent = msg;
+        if (button.parentNode) {
+          button.parentNode.appendChild(status);
+        }
+      });
     }
 
     function renderCard(item) {
@@ -172,6 +255,20 @@
       details.textContent = 'Details';
       footer.appendChild(details);
       body.appendChild(footer);
+
+      if (allowUpload && formatKeys.length) {
+        var actions = document.createElement('div');
+        actions.className = 'bookshop-actions';
+        var addButton = document.createElement('button');
+        addButton.type = 'button';
+        addButton.className = 'btn btn-success btn-xs bookshop-add';
+        addButton.textContent = 'Add to library';
+        addButton.addEventListener('click', function () {
+          addToLibrary(item, addButton);
+        });
+        actions.appendChild(addButton);
+        body.appendChild(actions);
+      }
 
       card.appendChild(body);
       return card;

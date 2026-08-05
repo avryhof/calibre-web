@@ -24,6 +24,33 @@
   height: 44px;
   white-space: nowrap;
 }
+.bookshop-search-type {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  padding: 0;
+  margin: 0 0 0.75rem;
+}
+.bookshop-search-type-label {
+  color: #4a4a4a;
+}
+.bookshop-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  padding: 0.25rem 0.75rem;
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+}
+.bookshop-type-option input {
+  margin: 0;
+}
 .bookshop-providers {
   display: flex;
   flex-wrap: wrap;
@@ -161,6 +188,27 @@
 }
 .bookshop-footer a {
   color: #337ab7;
+}
+.bookshop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.bookshop-actions .btn {
+  min-height: 30px;
+}
+.bookshop-add:hover, .bookshop-add:focus-visible {
+  text-decoration: none;
+}
+.bookshop-added {
+  color: #fff;
+}
+.bookshop-add-error {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  font-weight: normal;
 }
 
 a:focus-visible,

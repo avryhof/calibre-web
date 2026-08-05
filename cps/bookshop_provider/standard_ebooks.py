@@ -19,6 +19,7 @@ class StandardEbooks(BookshopProvider):
     __id__ = "standard_ebooks"
     DESCRIPTION = "Beautiful, expertly produced public-domain ebooks."
     HOMEPAGE = "https://standardebooks.org/"
+    DOWNLOAD_HOSTS = ("standardebooks.org",)
     SEARCH_URL = "https://standardebooks.org/ebooks"
     SITE_URL = "https://standardebooks.org"
 
@@ -31,7 +32,9 @@ class StandardEbooks(BookshopProvider):
     }
     FORMATS = ("epub", "azw3", "kepub.epub")
 
-    def search(self, query: str, limit: int = 12):
+    def search(self, query: str, limit: int = 12, search_type: str = "title"):
+        # Standard Ebooks' search page has no field-specific query, so the terms
+        # are passed through unchanged for both title and author searches.
         val = []
         try:
             results = requests.get(
