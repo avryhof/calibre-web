@@ -1,0 +1,136 @@
+{% extends "layout.html" %}
+{% block header %}
+    <link href="{{ url_for('static', filename='css/bulk_edit.css') }}" rel="stylesheet" media="screen">
+{% endblock %}
+{% block body %}
+<div class="bulk container-fluid">
+  <h2>{{ _('Bulk Edit') }}</h2>
+  <p class="bulk-intro">{{ _('Search for books, then fix their metadata by hand, from the online catalogs, or from the file names.') }}</p>
+
+  <form id="bulk-search" class="bulk-form" novalidate>
+    <div class="bulk-search-row">
+      <label class="sr-only" for="bulk-query">{{ _('Search library') }}</label>
+      <input type="search" id="bulk-query" name="q"
+             class="form-control bulk-query"
+             placeholder="{{ _('Search title, author, series, tags...') }}"
+             autocomplete="off" autofocus>
+      <button type="submit" class="btn btn-primary bulk-submit">
+        <span class="glyphicon glyphicon-search" aria-hidden="true"></span>
+        <span class="sr-only">{{ _('Search') }}</span>
+      </button>
+    </div>
+    <fieldset class="bulk-filters">
+      <legend class="sr-only">{{ _('Filter by missing metadata') }}</legend>
+      <span class="bulk-filters-label">{{ _('Missing metadata') }}:</span>
+      <label class="bulk-pill">
+        <input type="checkbox" class="bulk-filter-input" value="missing_isbn">
+        {{ _('ISBN') }}
+      </label>
+      <label class="bulk-pill">
+        <input type="checkbox" class="bulk-filter-input" value="missing_author">
+        {{ _('Author') }}
+      </label>
+      <label class="bulk-pill">
+        <input type="checkbox" class="bulk-filter-input" value="missing_cover">
+        {{ _('Cover') }}
+      </label>
+    </fieldset>
+  </form>
+
+  <details class="bulk-patterns" id="bulk-patterns-panel">
+    <summary class="bulk-patterns-summary">{{ _('Filename patterns') }}</summary>
+
+    <div class="bulk-patterns-grid">
+      <section class="bulk-patterns-block">
+        <h3 class="bulk-block-title">{{ _('Pattern to apply') }}</h3>
+        <label class="sr-only" for="pattern-select">{{ _('Filename pattern') }}</label>
+        <select id="pattern-select" class="form-control"></select>
+        <p class="bulk-hint">{{ _('Available fields') }}: {{ _('{{title}} {{author}} {{series}} {{series_index}} {{publisher}} {{year}} {{isbn}}') }}</p>
+        <p class="bulk-hint">{{ _('Separate the fields with literal text (spaces, dashes, dots) so each one can be located, for example') }}: <code>{{ _('{{author}} - {{title}} ({{isbn}})') }}</code></p>
+      </section>
+
+      <section class="bulk-patterns-block">
+        <h3 class="bulk-block-title">{{ _('Test a file name') }}</h3>
+        <div class="bulk-test-row">
+          <label class="sr-only" for="pattern-test-filename">{{ _('File name to test') }}</label>
+          <input type="text" id="pattern-test-filename" class="form-control"
+                 placeholder="{{ _('e.g. Star Trek - VOY - 001 - Book Title.xyz') }}">
+          <button type="button" id="pattern-test" class="btn btn-default bulk-test-btn">{{ _('Test') }}</button>
+        </div>
+        <p id="pattern-test-result" class="bulk-hint" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="bulk-patterns-block">
+        <h3 class="bulk-block-title">{{ _('Saved patterns') }}</h3>
+        <ul id="pattern-list" class="bulk-pattern-list"></ul>
+        <form id="pattern-add" class="bulk-pattern-add" novalidate>
+          <label class="sr-only" for="pattern-name">{{ _('Pattern name') }}</label>
+          <input type="text" id="pattern-name" class="form-control" placeholder="{{ _('Name') }}" autocomplete="off">
+          <label class="sr-only" for="pattern-text">{{ _('Pattern') }}</label>
+          <input type="text" id="pattern-text" class="form-control" placeholder="{{ _('{{series}} - {{series_index}} - {{title}}') }}"
+                 autocomplete="off">
+          <button type="submit" class="btn btn-primary">{{ _('Add pattern') }}</button>
+        </form>
+        <p id="pattern-add-status" class="bulk-hint" role="status" aria-live="polite"></p>
+      </section>
+    </div>
+  </details>
+
+  <p id="bulk-status" class="bulk-status" role="status" aria-live="polite"></p>
+  <div id="bulk-results" class="bulk-list" aria-live="polite"></div>
+</div>
+{% endblock %}
+{% block modal %}
+<div class="modal fade" id="bulkMetaModal" tabindex="-1" role="dialog" aria-labelledby="bulkMetaModalLabel">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        <h4 class="modal-title text-center" id="bulkMetaModalLabel">{{_('Fetch Metadata')}}</h4>
+        <form class="padded-bottom" id="bulk-meta-search" novalidate>
+          <div class="input-group">
+            <label class="sr-only" for="bulk-keyword">{{_('Keyword')}}</label>
+            <input type="text" class="form-control" id="bulk-keyword" name="keyword" placeholder="{{_("Search keyword")}}">
+            <span class="input-group-btn">
+              <button type="submit" class="btn btn-primary" id="bulk-do-search">{{_("Search")}}</button>
+            </span>
+          </div>
+        </form>
+        <div class="text-center"><strong>{{_('Click a result to load its metadata into the selected book')}}</strong></div>
+      </div>
+      <div class="modal-body">
+        <div class="text-center padded-bottom" id="bulk-metadata-provider"></div>
+        <div id="bulk-meta-info">
+          {{_("Loading...")}}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">{{_('Close')}}</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block js %}
+<script type="text/template" id="template-bulk-meta-result">
+  <li class="media bulk-meta-item" data-source="<%= source.id %>">
+    <img class="pull-left img-responsive bulk-meta-cover"
+         src="<%= cover || "{{ url_for('static', filename='img/academicpaper.svg') }}" %>"
+         alt="Cover">
+    <div class="media-body">
+      <h4 class="media-heading">
+        <a href="<%= url %>" target="_blank" rel="noopener"><%= title %></a>
+      </h4>
+      <p><%= authors.join(" & ") %></p>
+      <% if (publisher) { %>
+        <p>{{_('Publisher')}}: <%= publisher %></p>
+      <% } %>
+      <% if (description) { %>
+        <p class="bulk-meta-description">{{_('Description')}}: <%= description %></p>
+      <% } %>
+      <button type="button" class="btn btn-primary btn-xs bulk-meta-apply">{{_('Use this metadata')}}</button>
+    </div>
+  </li>
+</script>
+<script src="{{ url_for('static', filename='js/bulk.js') }}"></script>
+{% endblock %}

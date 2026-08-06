@@ -21,6 +21,7 @@
 #  along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import re
 from datetime import datetime, timezone
 import json
 from shutil import copyfile
@@ -298,6 +299,280 @@ def edit_selected_books():
         return jsonify([{'success': True, "msg": _("Changes successfully applied")}])
     else:
         return jsonify(res)
+
+
+# ---------------------------------------------------------------------------
+# Bulk edit screen: filename patterns, per-book metadata and field saving
+# ---------------------------------------------------------------------------
+
+FILENAME_PATTERN_TOKENS = (
+    "title",
+    "author",
+    "series",
+    "series_index",
+    "publisher",
+    "year",
+    "isbn",
+)
+
+
+def build_filename_pattern_regex(pattern):
+    """Compile a {token}-based filename pattern into a regex for matching a book's file stem."""
+    tokens = re.findall(r"\{([a-z_]+)\}", pattern)
+    if not tokens:
+        raise ValueError(_("Pattern must contain at least one token, e.g. {{title}}"))
+    for token in tokens:
+        if token not in FILENAME_PATTERN_TOKENS:
+            raise ValueError(_("Unknown pattern token: {token}").format(token=token))
+    if len(set(tokens)) != len(tokens):
+        raise ValueError(_("Pattern tokens must be unique"))
+    parts = re.split(r"\{[a-z_]+\}", pattern)
+    if any(part == "" for part in parts[1:-1]):
+        raise ValueError(_("Pattern tokens must be separated by literal text"))
+    regex_parts = []
+    for index, literal in enumerate(parts):
+        regex_parts.append(re.escape(literal))
+        if index < len(tokens):
+            if index == len(tokens) - 1 and not parts[-1]:
+                regex_parts.append(r"(.+)")
+            else:
+                regex_parts.append(r"(.+?)")
+    return re.compile("^" + "".join(regex_parts) + "$", re.IGNORECASE), tokens
+
+
+def parse_filename_with_pattern(pattern, filename):
+    """Extract metadata fields from a file name stem using the given pattern."""
+    regex, tokens = build_filename_pattern_regex(pattern)
+    match = regex.match(filename)
+    if not match:
+        return None
+    fields = {token: value.strip() for token, value in zip(tokens, match.groups())}
+    # series_index comes out of a file name as a string ("001", "7"); normalise
+    # it to a number so the field stores a value instead of leading-zero text.
+    if "series_index" in fields and fields["series_index"]:
+        try:
+            fields["series_index"] = format(float(fields["series_index"]), "g")
+        except ValueError:
+            pass
+    return fields
+
+
+BULK_FILTERS = frozenset({"missing_isbn", "missing_author", "missing_cover"})
+
+
+def _set_book_isbn(book, value):
+    """Set, replace or clear the ISBN identifier of a book. Returns True on change."""
+    value = strip_whitespaces(value or "")
+    existing = [i for i in book.identifiers if i.type.lower() == "isbn"]
+    if value:
+        if existing:
+            if existing[0].val != value:
+                existing[0].val = value
+                return True
+        else:
+            calibre_db.session.add(db.Identifiers(value, "isbn", book.id))
+            return True
+    else:
+        if existing:
+            for identifier in existing:
+                calibre_db.session.delete(identifier)
+            return True
+    return False
+
+
+def _apply_bulk_filters(query, filters):
+    """Restrict a book query to books missing the requested metadata.
+
+    ``filters`` must already be validated against BULK_FILTERS. Filters combine
+    with AND, so selecting several narrows the result set.
+    """
+    for key in filters:
+        if key == "missing_isbn":
+            with_isbn = calibre_db.session.query(db.Identifiers.book).filter(
+                func.lower(db.Identifiers.type) == "isbn")
+            query = query.filter(db.Books.id.notin_(with_isbn))
+        elif key == "missing_author":
+            with_author = calibre_db.session.query(db.books_authors_link.c.book)
+            query = query.filter(db.Books.id.notin_(with_author))
+        elif key == "missing_cover":
+            query = query.filter(db.Books.has_cover == 0)
+    return query
+
+
+def _book_for_bulk(book):
+    data = book.data[0] if book.data else None
+    filename = ""
+    file_format = ""
+    if data:
+        ext = (data.format or "").lower()
+        filename = (data.name or "") + (("." + ext) if ext else "")
+        file_format = ext.upper()
+    comment = ""
+    if book.comments and book.comments[0].text:
+        comment = book.comments[0].text[:200]
+    return {
+        "book_id": book.id,
+        "title": book.title or "",
+        "author_sort": book.author_sort or "",
+        "authors": " & ".join(a.name for a in book.authors),
+        "series": book.series[0].name if book.series else "",
+        "series_index": str(book.series_index or ""),
+        "publisher": book.publishers[0].name if book.publishers else "",
+        "year": book.pubdate.year if book.pubdate else None,
+        "isbn": next((i.val for i in book.identifiers if i.type.lower() == "isbn"), ""),
+        "has_cover": bool(book.has_cover),
+        "format": file_format,
+        "filename": filename,
+        "description": comment,
+        "edit_url": url_for("edit-book.show_edit_book", book_id=book.id),
+    }
+
+
+@editbook.route("/admin/bulk", methods=["GET"])
+@login_required_if_no_ano
+@edit_required
+def bulk_edit():
+    return render_title_template('bulk_edit.html', title=_("Bulk Edit"), page="bulk")
+
+
+@editbook.route("/admin/bulk/search", methods=["POST"])
+@login_required_if_no_ano
+@edit_required
+def bulk_search():
+    data = request.get_json() or {}
+    term = str(data.get("term", "")).strip()
+    filters = [key for key in (data.get("filters") or []) if key in BULK_FILTERS]
+    calibre_db.create_functions(config)
+    join = db.books_series_link, db.Books.id == db.books_series_link.c.book, db.Series
+    if term:
+        base = calibre_db.search_query(term, config, *join)
+    else:
+        base = calibre_db.session.query(db.Books).filter(calibre_db.common_filters())
+    query = _apply_bulk_filters(base, filters)
+    entries = query.order_by(db.Books.id.desc()).limit(200).all()
+    books = [entry[0] if term else entry for entry in entries]
+    return jsonify([_book_for_bulk(book) for book in books])
+
+
+@editbook.route("/admin/bulk/patterns", methods=["GET"])
+@login_required_if_no_ano
+@edit_required
+def bulk_patterns():
+    patterns = [{"id": p.id, "name": p.name, "pattern": p.pattern}
+                for p in ub.session.query(ub.FilenamePattern).order_by(ub.FilenamePattern.name).all()]
+    return jsonify(patterns)
+
+
+@editbook.route("/admin/bulk/patterns", methods=["POST"])
+@login_required_if_no_ano
+@edit_required
+def bulk_patterns_add():
+    data = request.get_json() or {}
+    name = strip_whitespaces(data.get("name", ""))
+    pattern = data.get("pattern", "").strip()
+    if not name or not pattern:
+        return jsonify(error=_("Name and pattern are required")), 400
+    try:
+        build_filename_pattern_regex(pattern)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    existing = ub.session.query(ub.FilenamePattern).filter(ub.FilenamePattern.name == name).first()
+    if existing:
+        return jsonify(error=_("A pattern with this name already exists")), 400
+    new_pattern = ub.FilenamePattern(name=name, pattern=pattern)
+    ub.session.add(new_pattern)
+    ub.session.commit()
+    return jsonify(id=new_pattern.id, name=name, pattern=pattern)
+
+
+@editbook.route("/admin/bulk/patterns/<int:pattern_id>", methods=["DELETE"])
+@login_required_if_no_ano
+@edit_required
+def bulk_patterns_delete(pattern_id):
+    pattern = ub.session.query(ub.FilenamePattern).filter(ub.FilenamePattern.id == pattern_id).first()
+    if not pattern:
+        return jsonify(error=_("Pattern not found")), 404
+    ub.session.delete(pattern)
+    ub.session.commit()
+    return jsonify(success=True)
+
+
+@editbook.route("/admin/bulk/parse", methods=["POST"])
+@login_required_if_no_ano
+@edit_required
+def bulk_parse():
+    data = request.get_json() or {}
+    pattern = data.get("pattern", "").strip()
+    filename = os.path.basename(data.get("filename", "") or "")
+    stem = os.path.splitext(filename)[0]
+    if not pattern:
+        return jsonify(error=_("Select a pattern first")), 400
+    try:
+        fields = parse_filename_with_pattern(pattern, stem)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    if not fields:
+        return jsonify(error=_("Filename does not match the selected pattern")), 400
+    return jsonify(fields=fields, filename=filename)
+
+
+@editbook.route("/admin/bulk/save", methods=["POST"])
+@login_required_if_no_ano
+@edit_required
+def bulk_save():
+    data = request.get_json() or {}
+    book = calibre_db.get_book(data.get("book_id"))
+    if not book:
+        return jsonify(error=_("Book not found")), 404
+    fields = data.get("fields") or {}
+    try:
+        calibre_db.create_functions(config)
+        modify_date = False
+        title_changed = False
+        authors_changed = False
+        input_authors = None
+        if "title" in fields:
+            title_changed = handle_title_on_edit(book, fields["title"])
+            modify_date |= title_changed
+        if "authors" in fields:
+            input_authors, authors_changed = handle_author_on_edit(book, fields["authors"])
+            modify_date |= authors_changed
+        if "series" in fields:
+            modify_date |= edit_book_series(fields["series"], book)
+        if "series_index" in fields and fields["series_index"]:
+            modify_date |= edit_book_series_index(fields["series_index"], book)
+        if "publisher" in fields:
+            modify_date |= edit_book_publisher(fields["publisher"], book)
+        if "isbn" in fields:
+            modify_date |= _set_book_isbn(book, fields["isbn"])
+        if "year" in fields and fields["year"]:
+            try:
+                new_pubdate = datetime(int(fields["year"]), 1, 1)
+                if book.pubdate != new_pubdate:
+                    book.pubdate = new_pubdate
+                    modify_date = True
+            except ValueError:
+                pass
+        if "description" in fields:
+            modify_date |= edit_book_comments(fields["description"], book)
+        if modify_date:
+            book.last_modified = datetime.now(timezone.utc)
+            kobo_sync_status.remove_synced_book(book.id, all=True)
+            calibre_db.set_metadata_dirty(book.id)
+            if title_changed or authors_changed:
+                error = helper.update_dir_structure(book.id,
+                                                    config.get_book_path(),
+                                                    input_authors[0] if authors_changed and input_authors else None)
+                if error:
+                    calibre_db.session.rollback()
+                    log.error_or_exception("Bulk edit save could not update path for book %s: %s", book.id, error)
+                    return jsonify(error=str(error)), 400
+            calibre_db.session.commit()
+        return jsonify(_book_for_bulk(calibre_db.get_book(book.id)))
+    except (ValueError, IntegrityError, OperationalError, InterfaceError, StaleDataError) as e:
+        calibre_db.session.rollback()
+        log.error_or_exception("Bulk edit save failed for book %s: %s", book.id, e)
+        return jsonify(error=str(e)), 400
 
 # Separated from /editbooks so that /editselectedbooks can also use this
 #

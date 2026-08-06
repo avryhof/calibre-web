@@ -607,6 +607,19 @@ class PhysicalLocation(Base):
         return '<PhysicalLocation %d:%r>' % (self.id, self.name)
 
 
+# Saved filename patterns used by the bulk-edit screen to extract metadata from file names
+class FilenamePattern(Base):
+    __tablename__ = 'filename_pattern'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, index=True)
+    pattern = Column(String)
+    created = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return '<FilenamePattern %d:%r>' % (self.id, self.name)
+
+
 # Add missing tables during migration of database
 def add_missing_tables(engine, _session):
     if not engine.dialect.has_table(engine.connect(), "archived_book"):
@@ -617,6 +630,8 @@ def add_missing_tables(engine, _session):
         PhysicalBook.__table__.create(bind=engine)
     if not engine.dialect.has_table(engine.connect(), "physical_location"):
         PhysicalLocation.__table__.create(bind=engine)
+    if not engine.dialect.has_table(engine.connect(), "filename_pattern"):
+        FilenamePattern.__table__.create(bind=engine)
 
 
 # Add columns introduced after the initial physical_book table creation (idempotent)
@@ -684,6 +699,8 @@ def migrate_Database(_session):
     migrate_physical_book_columns(engine, _session)
     migrate_physical_locations(engine, _session)
     migrate_bookshop_sidebar(engine, _session)
+    migrate_bulk_sidebar(engine, _session)
+    migrate_filename_patterns(engine, _session)
 
 
 def migrate_physical_book_sidebar(engine, _session):
@@ -703,6 +720,37 @@ def migrate_bookshop_sidebar(engine, _session):
         for user in _session.query(User).all():
             if not constants.has_flag(user.sidebar_view, constants.SIDEBAR_BOOKSHOP):
                 user.sidebar_view = (user.sidebar_view or 0) | constants.SIDEBAR_BOOKSHOP
+        _session.commit()
+    except exc.OperationalError:
+        _session.rollback()
+
+
+def migrate_bulk_sidebar(engine, _session):
+    # Enable the bulk edit sidebar item for existing users (idempotent)
+    try:
+        for user in _session.query(User).all():
+            if not constants.has_flag(user.sidebar_view, constants.SIDEBAR_BULK):
+                user.sidebar_view = (user.sidebar_view or 0) | constants.SIDEBAR_BULK
+        _session.commit()
+    except exc.OperationalError:
+        _session.rollback()
+
+
+def migrate_filename_patterns(engine, _session):
+    # Seed default filename patterns for the bulk edit screen (idempotent)
+    defaults = [
+        ("Series prefix", "{series} - {series_index} - {title}"),
+        ("Series then title", "{series} {series_index} - {title}"),
+        ("Author - Title", "{author} - {title}"),
+        ("Title only", "{title}"),
+        ("Title with year", "{title} ({year})"),
+        ("Title with ISBN", "{title} ({isbn})"),
+    ]
+    try:
+        existing = {p.name for p in _session.query(FilenamePattern).all()}
+        for name, pattern in defaults:
+            if name not in existing:
+                _session.add(FilenamePattern(name=name, pattern=pattern))
         _session.commit()
     except exc.OperationalError:
         _session.rollback()
@@ -815,6 +863,7 @@ def init_db(app_db_path):
         Base.metadata.create_all(engine)
         create_admin_user(session)
         create_anonymous_user(session)
+        migrate_Database(session)
 
 def password_change(user_credentials=None):
     if user_credentials:

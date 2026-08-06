@@ -351,20 +351,24 @@ def add_book(
                                                         meta.file_path,
                                                         title_dir + meta.extension.lower())
                 move_coverfile(meta, db_book)
+                if error:
+                    calibre_db.session.rollback()
+                    log.error_or_exception("Book shop add could not store the file for %s: %s",
+                                           payload.provider, error)
+                    raise HTTPException(status_code=500, detail=error)
                 if modify_date:
                     calibre_db.set_metadata_dirty(book_id)
                 calibre_db.session.commit()
                 helper.add_book_to_thumbnail_cache(book_id)
-                if error:
-                    log.warning("Book shop add: %s", error)
             except (HTTPException, IntegrityError, OperationalError, StaleDataError) as e:
                 calibre_db.session.rollback()
                 log.error_or_exception("Book shop add database error: %s", e)
                 raise HTTPException(status_code=500, detail="Could not add the book to the library")
             except Exception as e:
                 calibre_db.session.rollback()
-                log.warning("Book shop add failed for %s: %s", payload.provider, e)
-                raise HTTPException(status_code=500, detail="Could not add the book to the library")
+                log.error_or_exception("Book shop add failed for %s: %s", payload.provider, e)
+                raise HTTPException(status_code=500,
+                                    detail="Could not add the book to the library ({})".format(e))
     finally:
         if os.path.exists(tmp_path):
             try:

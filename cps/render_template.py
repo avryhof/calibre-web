@@ -108,6 +108,10 @@ def get_sidebar_config(kwargs=None):
         {"glyph": "glyphicon-shopping-cart", "text": _('Book Shop'), "link": 'bookshop.index', "id": "bookshop",
          "visibility": constants.SIDEBAR_BOOKSHOP, 'public': (not current_user.is_anonymous),
          "show_text": _('Show Book Shop'), "config_show": content, "no_param": True, "page": "bookshop"})
+    sidebar.append(
+        {"glyph": "glyphicon-edit", "text": _('Bulk Edit'), "link": 'edit-book.bulk_edit', "id": "bulk",
+         "visibility": constants.SIDEBAR_BULK, 'public': (not current_user.is_anonymous),
+         "show_text": _('Show Bulk Edit'), "config_show": content, "no_param": True, "page": "bulk"})
     g.shelves_access = ub.session.query(ub.Shelf).filter(
         or_(ub.Shelf.is_public == 1, ub.Shelf.user_id == current_user.id)).order_by(ub.Shelf.name).all()
 

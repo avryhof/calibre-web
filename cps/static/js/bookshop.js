@@ -141,7 +141,11 @@
           throw new Error('no-permission');
         }
         if (!response.ok) {
-          throw new Error('http-' + response.status);
+          return response.json().catch(function () { return {}; }).then(function (body) {
+            var err = new Error('http-' + response.status);
+            err.detail = body && body.detail;
+            throw err;
+          });
         }
         return response.json();
       }).then(function (data) {
@@ -164,6 +168,8 @@
           msg = 'This book file is too large to add.';
         } else if (err && err.message === 'http-429') {
           msg = 'Too many requests. Please try again later.';
+        } else if (err && err.detail) {
+          msg = 'Could not add this book. ' + err.detail;
         }
         var status = document.createElement('span');
         status.className = 'bookshop-error bookshop-add-error';
