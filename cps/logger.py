@@ -42,7 +42,7 @@ logging.addLevelName(logging.CRITICAL, "CRIT")
 
 class _Logger(logging.Logger):
 
-    def error_or_exception(self, message, stacklevel=1, *args, **kwargs):
+    def error_or_exception(self, message, *args, stacklevel=1, **kwargs):
         is_debug = self.getEffectiveLevel() <= logging.DEBUG
         if not is_debug:
             self.exception(message, stacklevel=stacklevel, *args, **kwargs)

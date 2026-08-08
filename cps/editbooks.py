@@ -22,6 +22,9 @@
 
 import os
 import re
+import shutil
+import subprocess
+import zipfile
 from datetime import datetime, timezone
 import json
 from shutil import copyfile
@@ -39,6 +42,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.sql.expression import func
 
 from . import constants, logger, isoLanguages, gdriveutils, uploader, helper, kobo_sync_status
+from . import isbn as isbn_utils
 from .clean_html import clean_string
 from . import config, ub, db, calibre_db
 from .services.worker import WorkerThread
@@ -340,6 +344,31 @@ def build_filename_pattern_regex(pattern):
     return re.compile("^" + "".join(regex_parts) + "$", re.IGNORECASE), tokens
 
 
+def _clean_isbn(value):
+    """Extract a single valid ISBN (10 or 13 digits, X allowed) from a parsed value.
+
+    File names sometimes carry the ISBN twice (e.g. "Title - 067151914X -
+    067151914X") or alongside junk; this returns a clean ISBN found in the
+    value, or None when the value contains no valid ISBN so garbage never
+    reaches the DB.
+    """
+    if not value:
+        return None
+    text = str(value)
+    isbns = isbn_utils.extract_isbns(text)
+    # A value like "0671 - 0671004255" over-grabs into one invalid run in a
+    # single regex pass, so also compact each whitespace-delimited token.
+    for token in re.split(r"\s+", text):
+        compact = isbn_utils.normalize_isbn(token)
+        if isbn_utils.is_valid_isbn(compact) and compact not in isbns:
+            isbns.append(compact)
+    # Last resort: the whole value may be one long separated number.
+    digits = re.sub(r"[^0-9Xx]", "", text)
+    if isbn_utils.is_valid_isbn(digits) and digits not in isbns:
+        isbns.append(digits)
+    return isbns[-1] if isbns else None
+
+
 def parse_filename_with_pattern(pattern, filename):
     """Extract metadata fields from a file name stem using the given pattern."""
     regex, tokens = build_filename_pattern_regex(pattern)
@@ -354,6 +383,14 @@ def parse_filename_with_pattern(pattern, filename):
             fields["series_index"] = format(float(fields["series_index"]), "g")
         except ValueError:
             pass
+    # isbn comes out of a file name as a string. Some files carry the ISBN
+    # twice or with junk; only fill the field with a clean, valid ISBN.
+    if "isbn" in fields:
+        clean_isbn = _clean_isbn(fields["isbn"])
+        if clean_isbn:
+            fields["isbn"] = clean_isbn
+        else:
+            del fields["isbn"]
     return fields
 
 
@@ -365,12 +402,17 @@ def _set_book_isbn(book, value):
     value = strip_whitespaces(value or "")
     existing = [i for i in book.identifiers if i.type.lower() == "isbn"]
     if value:
+        clean_value = _clean_isbn(value)
+        if not clean_value:
+            # Non-empty input that is not a valid ISBN: leave the identifier
+            # untouched so garbage never replaces a stored value.
+            return False
         if existing:
-            if existing[0].val != value:
-                existing[0].val = value
+            if existing[0].val != clean_value:
+                existing[0].val = clean_value
                 return True
         else:
-            calibre_db.session.add(db.Identifiers(value, "isbn", book.id))
+            calibre_db.session.add(db.Identifiers(clean_value, "isbn", book.id))
             return True
     else:
         if existing:
@@ -421,6 +463,7 @@ def _book_for_bulk(book):
         "year": book.pubdate.year if book.pubdate else None,
         "isbn": next((i.val for i in book.identifiers if i.type.lower() == "isbn"), ""),
         "has_cover": bool(book.has_cover),
+        "cover_url": url_for("web.get_cover", book_id=book.id) if book.has_cover else "",
         "format": file_format,
         "filename": filename,
         "description": comment,
@@ -516,6 +559,114 @@ def bulk_parse():
     return jsonify(fields=fields, filename=filename)
 
 
+@editbook.route("/admin/bulk/scan-isbn", methods=["POST"])
+@login_required_if_no_ano
+@edit_required
+def bulk_scan_isbn():
+    data = request.get_json() or {}
+    book = calibre_db.get_book(data.get("book_id"))
+    if not book:
+        return jsonify(error=_("Book not found")), 404
+    isbns = _scan_book_files_for_isbn(book)
+    if not isbns:
+        return jsonify(isbn="", isbns=[])
+    best = isbn_utils.preferred_isbn(isbns) or isbns[0]
+    return jsonify(isbn=best, isbns=isbns)
+
+
+_ZIP_TEXT_SUFFIXES = (".opf", ".ncx", ".xhtml", ".html", ".htm", ".xml", ".txt", ".md")
+_ZIP_TEXT_MAX_MEMBERS = 200
+_SCAN_TEXT_LIMIT = 4 * 1024 * 1024  # cap scanned text so huge books cannot stall the request
+
+
+def _read_file_sample(file_path, max_bytes=_SCAN_TEXT_LIMIT):
+    """Return the start of a plain text file as a string, or an empty string."""
+    try:
+        with open(file_path, "rb") as f:
+            return f.read(max_bytes).decode("utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def _read_zip_text(file_path):
+    """Concatenate the text-ish members of a zip based ebook (epub/cbz/...)."""
+    chunks = []
+    try:
+        with zipfile.ZipFile(file_path) as zf:
+            for index, info in enumerate(zf.infolist()):
+                if index >= _ZIP_TEXT_MAX_MEMBERS:
+                    break
+                name = info.filename.lower()
+                if not name.endswith(_ZIP_TEXT_SUFFIXES):
+                    continue
+                try:
+                    raw = zf.read(info)
+                except Exception:
+                    continue
+                chunks.append(raw[:512 * 1024].decode("utf-8", errors="ignore"))
+    except (zipfile.BadZipFile, OSError):
+        pass
+    return "\n".join(chunks)[:_SCAN_TEXT_LIMIT]
+
+
+def _ebook_meta_binary():
+    if config.config_binariesdir:
+        candidate = os.path.join(config.config_binariesdir, "ebook-meta")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return shutil.which("ebook-meta")
+
+
+def _run_binary_output(command, timeout=20):
+    """Run a read-only helper (pdftotext/ebook-meta) and capture combined output."""
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        try:
+            output, _ = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            return ""
+        return output.decode("utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def _scan_book_files_for_isbn(book):
+    """Extract ISBNs embedded in a book's files (OPF metadata and body text).
+
+    Reads the raw text of zip based formats and plain text files directly, and
+    delegates binary formats (mobi/azw3/pdf/...) to calibre's ebook-meta plus
+    pdftotext for PDFs. Returns de-duplicated ISBNs in order of appearance.
+    """
+    if not book or not book.data:
+        return []
+    found = []
+    seen = set()
+
+    def add(text):
+        for isbn in isbn_utils.extract_isbns(text):
+            if isbn not in seen:
+                seen.add(isbn)
+                found.append(isbn)
+
+    for data in book.data:
+        ext = (data.format or "").lower()
+        file_path = os.path.join(config.get_book_path(), book.path, data.name + "." + ext)
+        if not os.path.isfile(file_path):
+            continue
+        if ext in ("epub", "cbz", "cbt", "cb7", "zip"):
+            add(_read_zip_text(file_path))
+        elif ext in ("txt", "html", "htm", "fb2", "md"):
+            add(_read_file_sample(file_path))
+        elif ext == "pdf" and shutil.which("pdftotext"):
+            add(_run_binary_output(["pdftotext", file_path, "-"]))
+        meta_binary = _ebook_meta_binary()
+        if meta_binary and ext not in ("epub", "cbz", "cbt", "cb7", "zip", "txt"):
+            add(_run_binary_output([meta_binary, file_path]))
+    return found
+
+
 @editbook.route("/admin/bulk/save", methods=["POST"])
 @login_required_if_no_ano
 @edit_required
@@ -555,6 +706,23 @@ def bulk_save():
                 pass
         if "description" in fields:
             modify_date |= edit_book_comments(fields["description"], book)
+        cover_url = strip_whitespaces(data.get("cover_url", ""))
+        if cover_url:
+            if not current_user.role_upload():
+                return jsonify(error=_("User has no rights to upload cover")), 403
+            if cover_url.endswith('/static/generic_cover.jpg'):
+                book.has_cover = 0
+                modify_date = True
+            else:
+                result, error = helper.save_cover_from_url(cover_url, book.path)
+                if result is True:
+                    book.has_cover = 1
+                    modify_date = True
+                    helper.replace_cover_thumbnail_cache(book.id)
+                else:
+                    log.error_or_exception("Bulk edit cover download failed for book %s: %s", book.id, error)
+                    calibre_db.session.rollback()
+                    return jsonify(error=_("Cover download failed: %(error)s", error=error)), 400
         if modify_date:
             book.last_modified = datetime.now(timezone.utc)
             kobo_sync_status.remove_synced_book(book.id, all=True)

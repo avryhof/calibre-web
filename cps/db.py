@@ -48,6 +48,7 @@ from flask_babel import get_locale
 from flask import flash, g, Flask
 
 from . import logger, ub, isoLanguages
+from . import isbn as isbn_utils
 from .pagination import Pagination
 from .string_helper import strip_whitespaces
 
@@ -991,6 +992,24 @@ class CalibreDB:
         return self.session.query(Books) \
             .filter(and_(Books.authors.any(and_(*q)), func.lower(Books.title).ilike("%" + title + "%"))).first()
 
+    def _isbn_search_ids(self, isbn):
+        """Book ids whose identifiers or comments contain the given ISBN.
+
+        ISBNs are commonly stored with separating dashes (or a stray "ISBN"
+        label) in free text, so comparisons are done on the compact digit form.
+        """
+        ids = set()
+        if not isbn:
+            return ids
+        compact_isbn = isbn.lower()
+        for row in self.session.query(Identifiers.book).filter(
+                func.replace(func.lower(Identifiers.val), '-', '') == compact_isbn).all():
+            ids.add(row[0])
+        for row in self.session.query(Comments.book).filter(
+                func.replace(func.lower(Comments.text), '-', '').ilike("%" + compact_isbn + "%")).all():
+            ids.add(row[0])
+        return ids
+
     def search_query(self, term, config, *join):
         term = strip_whitespaces(term).lower()
         self.create_functions()
@@ -1040,7 +1059,14 @@ class CalibreDB:
 
         # If FTS5 found results, use those IDs
         if fts_ids:
-            return base_query.filter(Books.id.in_(fts_ids))
+            ids = set(fts_ids)
+            # An ISBN embedded in identifiers or comments would not live in the
+            # FTS index, so also match those sources for ISBN queries.
+            isbn = isbn_utils.isbn_from_term(term)
+            if isbn:
+                ids |= self._isbn_search_ids(isbn)
+            if ids:
+                return base_query.filter(Books.id.in_(list(ids)))
 
         # Fallback to traditional search with optimized subqueries
         author_terms = re.split("[, ]+", term)
@@ -1077,6 +1103,14 @@ class CalibreDB:
                     getattr(Books,
                             'custom_column_' + str(c.id)).any(
                         func.lower(cc_classes[c.id].value).ilike("%" + term + "%")))
+
+        # An ISBN may live in any free-text field rather than the identifiers
+        # table; match identifier and comment content for ISBN-shaped queries.
+        isbn = isbn_utils.isbn_from_term(term)
+        if isbn:
+            isbn_ids = self._isbn_search_ids(isbn)
+            if isbn_ids:
+                filter_expression.append(Books.id.in_(list(isbn_ids)))
 
         return base_query.filter(or_(*filter_expression))
 

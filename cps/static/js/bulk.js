@@ -152,13 +152,22 @@ $(function () {
     var head = document.createElement('div');
     head.className = 'bulk-card-head';
 
+    var coverImg = document.createElement('img');
+    coverImg.className = 'bulk-card-cover';
+    coverImg.alt = 'Cover';
+    coverImg.src = book.cover_url || '';
+    if (!book.cover_url) { coverImg.hidden = true; }
+
+    var headBody = document.createElement('div');
+    headBody.className = 'bulk-card-head-body';
+
     var titleLink = document.createElement('a');
     titleLink.className = 'bulk-card-title';
     titleLink.href = book.edit_url || '#';
     titleLink.target = '_blank';
     titleLink.rel = 'noopener noreferrer';
     titleLink.textContent = book.title || '';
-    head.appendChild(titleLink);
+    headBody.appendChild(titleLink);
 
     var badges = document.createElement('div');
     badges.className = 'bulk-card-badges';
@@ -177,7 +186,9 @@ $(function () {
       fileBadge.classList.add('bulk-badge-file');
       badges.appendChild(fileBadge);
     }
-    head.appendChild(badges);
+    headBody.appendChild(badges);
+    head.appendChild(coverImg);
+    head.appendChild(headBody);
     card.appendChild(head);
 
     var actions = document.createElement('div');
@@ -185,6 +196,7 @@ $(function () {
     actions.appendChild(actionButton('Edit fields', 'bulk-toggle'));
     actions.appendChild(applyPatternControl());
     actions.appendChild(actionButton('Fetch metadata', 'bulk-meta'));
+    actions.appendChild(actionButton('Find ISBN', 'bulk-isbn'));
     card.appendChild(actions);
 
     var fields = document.createElement('form');
@@ -270,6 +282,12 @@ $(function () {
   function updateCardSummary(card, book) {
     var $card = $(card);
     $card.find('.bulk-card-title').text(book.title || '').attr('href', book.edit_url || '#');
+    var coverImg = $card.find('.bulk-card-cover');
+    if (book.cover_url) {
+      coverImg.prop('src', book.cover_url).prop('hidden', false);
+    } else {
+      coverImg.prop('src', '').prop('hidden', true);
+    }
     var badges = $card.find('.bulk-card-badges').empty();
     appendMissingBadges(badges.get(0), book);
     if (book.author_sort) { badges.append(badge(book.author_sort)); }
@@ -468,9 +486,13 @@ $(function () {
     clearFieldErrors(card);
     var button = this;
     button.disabled = true;
-    postJSON('/admin/bulk/save', {book_id: card.data('book-id'), fields: fields})
+    var payload = {book_id: card.data('book-id'), fields: fields};
+    var coverUrl = card.data('cover-url') || '';
+    if (coverUrl) { payload.cover_url = coverUrl; }
+    postJSON('/admin/bulk/save', payload)
       .done(function (book) {
         button.disabled = false;
+        card.removeData('cover-url');
         updateCardSummary(card, book);
         closeFields(card);
         if (activeFilters().length) {
@@ -480,6 +502,36 @@ $(function () {
         } else {
           showRowStatus(card, 'Saved.', false);
         }
+      })
+      .fail(function (xhr) {
+        button.disabled = false;
+        showRowStatus(card, extractError(xhr), true);
+      });
+  });
+
+  // ---- ISBN scan in file -------------------------------------------------
+
+  $(document).on('click', '.bulk-isbn', function () {
+    var card = $(this).closest('.bulk-card');
+    var button = this;
+    button.disabled = true;
+    showRowStatus(card, 'Scanning file for ISBN...', false);
+    postJSON('/admin/bulk/scan-isbn', {book_id: card.data('book-id')})
+      .done(function (resp) {
+        button.disabled = false;
+        if (resp.error) {
+          showRowStatus(card, resp.error, true);
+          return;
+        }
+        if (!resp.isbn) {
+          showRowStatus(card, 'No ISBN found in the file.', true);
+          return;
+        }
+        var input = card.find('input[data-field="isbn"]');
+        input.val(resp.isbn);
+        input.removeAttr('aria-invalid').removeAttr('aria-describedby');
+        openFields(card);
+        showRowStatus(card, 'ISBN found in file - review and save.', false);
       })
       .fail(function (xhr) {
         button.disabled = false;
@@ -542,12 +594,17 @@ $(function () {
 
   $(document).on('click', '.bulk-meta', function () {
     metaTarget = $(this).closest('.bulk-card');
+    var isbn = metaTarget.find('input[data-field="isbn"]').val() || '';
     var title = metaTarget.find('input[data-field="title"]').val() ||
       metaTarget.find('.bulk-card-title').text().trim();
-    $('#bulk-keyword').val(title);
+    var authors = metaTarget.find('input[data-field="authors"]').val() || '';
+    // Prefer an exact ISBN lookup; otherwise search title + author so books
+    // like "It" by Stephen King are findable.
+    var keyword = isbn.trim() || [title, authors].filter(Boolean).join(' ');
+    $('#bulk-keyword').val(keyword);
     loadProviders();
     $('#bulkMetaModal').modal('show');
-    doMetaSearch(title);
+    doMetaSearch(keyword);
   });
 
   $('#bulk-meta-search').on('submit', function (e) {
@@ -570,9 +627,16 @@ $(function () {
     if (data.publishedDate) { fill.year = String(data.publishedDate).slice(0, 4); }
     fillFields(metaTarget, fill);
     if (data.description) { metaTarget.find('textarea[data-field="description"]').val(data.description); }
+    // Queue the fetched cover for download on save and preview it on the card.
+    var coverUrl = data.cover || '';
+    var coverImg = metaTarget.find('.bulk-card-cover');
+    if (coverUrl && !/generic_cover\.jpg$/.test(coverUrl)) {
+      metaTarget.data('cover-url', coverUrl);
+      coverImg.prop('src', coverUrl).prop('hidden', false);
+    }
     openFields(metaTarget);
     $('#bulkMetaModal').modal('hide');
-    showRowStatus(metaTarget, 'Metadata filled from catalog - review and save.', false);
+    showRowStatus(metaTarget, 'Metadata filled from catalog - cover queued - review and save.', false);
   });
 
   // ---- events -------------------------------------------------------------

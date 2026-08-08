@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col">
+      <h2>{{_('API Keys')}}</h2>
+      <p>{{_('API keys let the Calibre desktop sync plugin authenticate to this server. '
+             'Keys are tied to a user, so they inherit that user\u2019s upload, download and delete permissions.')}}</p>
+
+      {% if new_key %}
+      <div class="alert alert-success" role="alert">
+        <p><strong>{{_('Copy your new API key now')}}</strong> ({{ new_key_name }}). {{_('It is only shown this once.')}}</p>
+        <p><code class="api-key-value">{{ new_key }}</code></p>
+      </div>
+      {% endif %}
+
+      <form role="form" class="col-md-10 col-lg-6" method="POST" action="{{ url_for('admin.api_keys') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="create">
+        <div class="form-group">
+          <label for="api_key_name">{{_('Key name')}}</label>
+          <input type="text" class="form-control" name="name" id="api_key_name" maxlength="128"
+                 placeholder="" aria-describedby="api_key_name_hint">
+          <small id="api_key_name_hint" class="form-text text-muted">{{_('A label to identify this key, e.g. "Home Calibre client".')}}</small>
+        </div>
+        <div class="form-group">
+          <label for="api_key_user">{{_('User')}}</label>
+          <select name="user_id" id="api_key_user" class="form-control" required>
+            <option value="">{{_('Select a user...')}}</option>
+            {% for user in allUser %}
+              {% if not user.role_anonymous() or config.config_anonbrowse %}
+              <option value="{{ user.id }}">{{ user.name }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+          <small class="form-text text-muted">{{_('The key inherits this user\u2019s upload, download and delete permissions.')}}</small>
+        </div>
+        <button type="submit" id="api_key_create" class="btn btn-default">{{_('Generate API Key')}}</button>
+      </form>
+
+      <h3>{{_('Existing API Keys')}}</h3>
+      {% if keys %}
+      <table class="table table-striped" id="table_api_keys">
+        <thead>
+          <tr>
+            <th scope="col">{{_('Name')}}</th>
+            <th scope="col">{{_('User')}}</th>
+            <th scope="col">{{_('Created')}}</th>
+            <th scope="col">{{_('Last Used')}}</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for key in keys %}
+          <tr>
+            <td>{{ key.name }}</td>
+            <td>{{ key.user.name if key.user else '?' }}</td>
+            <td>{% if key.created %}{{ key.created.strftime('%Y-%m-%d %H:%M') }}{% endif %}</td>
+            <td>{% if key.last_used %}{{ key.last_used.strftime('%Y-%m-%d %H:%M') }}{% else %}&mdash;{% endif %}</td>
+            <td>
+              <form method="POST" action="{{ url_for('admin.api_keys') }}"
+                    onsubmit="return confirm('{{_('Revoke this API key?')}}');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="key_id" value="{{ key.id }}">
+                <button type="submit" class="btn btn-danger btn-sm" aria-label="{{_('Revoke API key %(name)s', name=key.name)}}">{{_('Revoke')}}</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p>{{_('No API keys yet. Generate one above to configure the Calibre desktop plugin.')}}</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

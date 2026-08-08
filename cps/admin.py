@@ -33,7 +33,7 @@ from functools import wraps
 from urllib.parse import urlparse
 
 from flask import Blueprint, flash, redirect, url_for, abort, request, make_response, \
-    send_from_directory, g, jsonify
+    send_from_directory, g, jsonify, session
 from markupsafe import Markup
 from .cw_login import current_user
 from flask_babel import gettext as _
@@ -232,6 +232,39 @@ def admin():
                                  feature_support=feature_support, schedule_time=schedule_time,
                                  schedule_duration=schedule_duration,
                                  title=_("Admin page"), page="admin")
+
+
+@admi.route("/admin/api_keys", methods=["GET", "POST"])
+@user_login_required
+@admin_required
+def api_keys():
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "create":
+            name = strip_whitespaces(request.form.get("name", ""))
+            user_id = request.form.get("user_id", "")
+            user = ub.session.get(ub.User, int(user_id)) if user_id.isdigit() else None
+            if user is None:
+                flash(_("Select a user for the API key"), category="error")
+            else:
+                _, raw_key = ub.create_api_key(user.id, name)
+                if raw_key:
+                    session["new_api_key"] = raw_key
+                    session["new_api_key_name"] = name or user.name
+                    flash(_("API key created"), category="success")
+        elif action == "delete":
+            key_id = request.form.get("key_id", "")
+            if key_id.isdigit() and ub.delete_api_key(int(key_id)):
+                flash(_("API key deleted"), category="success")
+        return redirect(url_for("admin.api_keys"))
+
+    all_user = ub.session.query(ub.User).all()
+    keys = ub.list_api_keys()
+    new_key = session.pop("new_api_key", None)
+    new_key_name = session.pop("new_api_key_name", "")
+    return render_title_template("api_keys.html", keys=keys, allUser=all_user,
+                                 new_key=new_key, new_key_name=new_key_name,
+                                 config=config, title=_("API Keys"), page="admin")
 
 
 @admi.route("/admin/dbconfig", methods=["GET", "POST"])

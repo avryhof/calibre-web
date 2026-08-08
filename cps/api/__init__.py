@@ -33,3 +33,4 @@ async def security_headers(request, call_next):
 
 
 from . import bookshop  # noqa: E402,F401
+from . import sync  # noqa: E402,F401

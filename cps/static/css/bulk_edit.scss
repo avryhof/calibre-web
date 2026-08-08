@@ -190,9 +190,27 @@
 
   &-card-head {
     display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.6rem;
+    min-width: 0;
+  }
+
+  &-card-head-body {
+    display: flex;
     flex-direction: column;
     gap: 0.35rem;
     min-width: 0;
+  }
+
+  &-card-cover {
+    flex: 0 0 auto;
+    width: 52px;
+    height: 72px;
+    object-fit: cover;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #f4f4f4;
   }
 
   &-card-title {
@@ -339,6 +357,16 @@
     font-size: 0.85rem;
     max-height: 4.5em;
     overflow: hidden;
+  }
+
+  &-meta-cover {
+    width: 72px;
+    height: auto;
+    max-height: 108px;
+    object-fit: contain;
+    margin-right: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 3px;
   }
 }
 

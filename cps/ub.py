@@ -340,6 +340,18 @@ class Anonymous(AnonymousUserMixin, UserBase):
             flask_session['view'][page] = dict()
         flask_session['view'][page][prop] = value
 
+class APIKey(Base):
+    __tablename__ = 'api_key'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('user.id'))
+    user = relationship('User', backref='api_keys')
+    name = Column(String(128), default="")
+    key_hash = Column(String, nullable=False, unique=True)
+    created = Column(DateTime, default=datetime.now)
+    last_used = Column(DateTime, nullable=True)
+
+
 class User_Sessions(Base):
     __tablename__ = 'user_session'
 
@@ -926,3 +938,48 @@ def session_commit(success=None, _session=None):
         s.rollback()
         log.error_or_exception(e)
     return ""
+
+
+# ---------------------------------------------------------------------------
+# API keys (used by the Calibre desktop sync plugin)
+# ---------------------------------------------------------------------------
+
+def _hash_api_key(raw_key):
+    import hashlib
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+
+def create_api_key(user_id, name=""):
+    """Create a new API key for a user. Returns (key_id, raw_key).
+       The raw key is only returned once; only its hash is stored."""
+    import secrets
+    raw_key = secrets.token_urlsafe(32)
+    api_key = APIKey(user_id=user_id, name=name[:128] or "", key_hash=_hash_api_key(raw_key))
+    session.add(api_key)
+    session.commit()
+    return api_key.id, raw_key
+
+
+def delete_api_key(key_id):
+    api_key = session.get(APIKey, key_id)
+    if api_key is None:
+        return False
+    session.delete(api_key)
+    session_commit("API key id %s deleted" % key_id)
+    return True
+
+
+def list_api_keys():
+    return session.query(APIKey).all()
+
+
+def verify_api_key(raw_key):
+    """Resolve a raw API key to its owning User, or None if invalid."""
+    if not raw_key:
+        return None
+    api_key = session.query(APIKey).filter(APIKey.key_hash == _hash_api_key(raw_key)).first()
+    if api_key is None:
+        return None
+    api_key.last_used = datetime.now()
+    session.commit()
+    return session.get(User, api_key.user_id)
