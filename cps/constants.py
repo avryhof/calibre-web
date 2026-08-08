@@ -167,6 +167,10 @@ if sys.platform == "win32":
     _extension = ".exe"
 SUPPORTED_CALIBRE_BINARIES = {binary: binary + _extension for binary in ["ebook-convert", "calibredb"]}
 
+# Virtual book format used to mark a physically owned copy on the metadata
+# screen. It has no file on disk.
+PHYSICAL_FORMAT = "PHYSICAL"
+
 
 def has_flag(value, bit_flag):
     return bit_flag == (bit_flag & (value or 0))

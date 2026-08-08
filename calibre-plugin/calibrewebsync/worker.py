@@ -71,6 +71,38 @@ def _epoch(dt):
     return dt.astimezone(timezone.utc).timestamp()
 
 
+def _probe_content_server():
+    """Return (url, online) for the Calibre desktop content server.
+
+    Uses the configured content server URL if set, otherwise probes the
+    usual localhost addresses."""
+    candidates = []
+    configured = (prefs.get('content_server_url') or '').strip()
+    if configured:
+        candidates.append(configured)
+    candidates.extend(['http://localhost:8080', 'http://127.0.0.1:8080'])
+    ctx = None
+    if not prefs.get('verify_ssl', True):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    seen = set()
+    for url in candidates:
+        url = url.strip().rstrip('/')
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        try:
+            req = urllib.request.Request(url, method='GET')
+            with urllib.request.urlopen(req, timeout=2, context=ctx) as resp:
+                if resp.status < 500:
+                    return url, True
+        except Exception:
+            continue
+    base = (configured or 'http://localhost:8080').strip().rstrip('/')
+    return base, False
+
+
 # ---------------------------------------------------------------------------
 # HTTP helpers (stdlib only)
 # ---------------------------------------------------------------------------
@@ -115,6 +147,12 @@ class _Client(object):
     def get_json(self, path):
         status, body = self._request('GET', path)
         return json.loads(body.decode('utf-8', 'replace'))
+
+    def post_json(self, path, payload):
+        body = json.dumps(payload).encode('utf-8')
+        status, resp = self._request('POST', path, body=body,
+                                     headers={'Content-Type': 'application/json'})
+        return json.loads(resp.decode('utf-8', 'replace'))
 
     def get_bytes(self, path, timeout=DEFAULT_TIMEOUT):
         return self._request('GET', path, timeout=timeout)[1]
@@ -205,7 +243,8 @@ class CalibreWebSyncAction(InterfaceAction):
     action_spec = ('Calibre-Web Sync', None,
                    'Sync the library with a Calibre-Web server', ())
     action_type = 'current'
-    dont_add_to = None
+    dont_add_to = frozenset()
+    dont_remove_from = frozenset()
 
     def do_user_clicked_gui(self, event_queue):
         """Runs in a background thread. Posts GUI work back via event_queue."""
@@ -260,6 +299,16 @@ class CalibreWebSyncAction(InterfaceAction):
         report.append('Remote library: {} books'.format(remote_total))
         remote_uuids = set(remote_by_uuid)
 
+        # Report the Calibre desktop content server status so Calibre-Web can
+        # link synced books back into the desktop content server.
+        if prefs.get('report_content_server', True):
+            try:
+                url, online, library_name = self._report_content_server(client, db)
+                report.append('Content server: {} ({})'.format(
+                    url or 'not configured', 'online' if online else 'offline'))
+            except Exception:
+                report.append('Content server: status report failed')
+
         # Phase B: push local changes.
         local_by_uuid = {}
         if prefs.get('push_changes', True):
@@ -310,6 +359,17 @@ class CalibreWebSyncAction(InterfaceAction):
             if offset >= total or not payload.get('books'):
                 break
         return remote_by_uuid, total
+
+    def _report_content_server(self, client, db):
+        url, online = _probe_content_server()
+        library_name = ''
+        try:
+            library_name = os.path.basename((db.library_path or '').rstrip('/')) or ''
+        except Exception:
+            pass
+        client.post_json('/api/sync/content-server',
+                         {'url': url, 'online': online, 'library_name': library_name})
+        return url, online, library_name
 
     def _collect_local(self, db):
         local_by_uuid = {}

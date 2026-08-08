@@ -14,6 +14,12 @@
       </div>
       {% endif %}
 
+      {% if keys and config.config_app_mode in ('development', 'test') %}
+      <div class="alert alert-info" role="alert">
+        {{_('App mode is %(mode)s: existing API keys can be viewed below.', mode=config.config_app_mode)}}
+      </div>
+      {% endif %}
+
       <form role="form" class="col-md-10 col-lg-6" method="POST" action="{{ url_for('admin.api_keys') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="create">
@@ -47,6 +53,7 @@
             <th scope="col">{{_('User')}}</th>
             <th scope="col">{{_('Created')}}</th>
             <th scope="col">{{_('Last Used')}}</th>
+            <th scope="col">{{_('Key')}}</th>
             <th scope="col"></th>
           </tr>
         </thead>
@@ -57,6 +64,14 @@
             <td>{{ key.user.name if key.user else '?' }}</td>
             <td>{% if key.created %}{{ key.created.strftime('%Y-%m-%d %H:%M') }}{% endif %}</td>
             <td>{% if key.last_used %}{{ key.last_used.strftime('%Y-%m-%d %H:%M') }}{% else %}&mdash;{% endif %}</td>
+            <td>
+              {% if key.key_value %}
+              <code class="api-key-reveal" data-key-value="{{ key.key_value }}" data-visible="false">{{_('hidden')}}</code>
+              <button type="button" class="btn btn-xs btn-default api-key-toggle" aria-label="{{_('Reveal API key %(name)s', name=key.name)}}">{{_('View')}}</button>
+              {% else %}
+              <span class="text-muted">&mdash;</span>
+              {% endif %}
+            </td>
             <td>
               <form method="POST" action="{{ url_for('admin.api_keys') }}"
                     onsubmit="return confirm('{{_('Revoke this API key?')}}');">
@@ -73,7 +88,35 @@
       {% else %}
       <p>{{_('No API keys yet. Generate one above to configure the Calibre desktop plugin.')}}</p>
       {% endif %}
+
+      <h3>{{_('Calibre desktop')}}</h3>
+      <div class="form-group">
+        <a class="btn btn-default" href="{{ url_for('admin.download_sync_plugin') }}">{{_('Download the Calibre desktop sync plugin')}}</a>
+      </div>
+      {% if content_server %}
+      <div class="form-group" id="content-server-status">
+        <p>
+          {{_('Content server:')}}
+          {% if content_server.online %}
+          <span class="label label-success">{{_('online')}}</span>
+          {% else %}
+          <span class="label label-default">{{_('offline')}}</span>
+          {% endif %}
+          {% if content_server.url %}<a href="{{ content_server.url }}" target="_blank" rel="noopener noreferrer">{{ content_server.url }}</a>{% endif %}
+        </p>
+        {% if content_server.library_name %}
+        <p>{{_('Library:')}} <code>{{ content_server.library_name }}</code></p>
+        {% endif %}
+        {% if content_server.last_seen %}
+        <p>{{_('Last reported:')}} {{ content_server.last_seen.strftime('%Y-%m-%d %H:%M:%S') }} {{_('by')}} {{ content_server.last_reported_by or '?' }}</p>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block js %}
+<script src="{{ url_for('static', filename='js/api_keys.js') }}"></script>
 {% endblock %}

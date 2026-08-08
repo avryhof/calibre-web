@@ -8,6 +8,7 @@ $(function () {
   var bulkBase = window.bulkBase || '';
   var patterns = [];
   var metaTarget = null;
+  var selection = {};
 
   function postJSON(url, data) {
     return $.ajax({
@@ -31,6 +32,7 @@ $(function () {
     if (!book.isbn) { out.push('No ISBN'); }
     if (!book.authors) { out.push('No author'); }
     if (!book.has_cover) { out.push('No cover'); }
+    if (!book.formats || !book.formats.length) { out.push('No format'); }
     return out;
   }
 
@@ -149,6 +151,16 @@ $(function () {
     card.className = 'bulk-card';
     card.setAttribute('data-book-id', book.book_id);
 
+    var selectWrap = document.createElement('div');
+    selectWrap.className = 'bulk-card-select';
+    var selectCheck = document.createElement('input');
+    selectCheck.type = 'checkbox';
+    selectCheck.className = 'bulk-select';
+    selectCheck.setAttribute('aria-label', 'Select ' + (book.title || ('book ' + book.book_id)));
+    selectCheck.value = book.book_id;
+    if (selection[book.book_id]) { selectCheck.checked = true; }
+    selectWrap.appendChild(selectCheck);
+
     var head = document.createElement('div');
     head.className = 'bulk-card-head';
 
@@ -189,6 +201,7 @@ $(function () {
     headBody.appendChild(badges);
     head.appendChild(coverImg);
     head.appendChild(headBody);
+    head.appendChild(selectWrap);
     card.appendChild(head);
 
     var actions = document.createElement('div');
@@ -239,6 +252,8 @@ $(function () {
     list.append(fragment);
     renderApplyMenus(list.get(0));
     $('#bulk-status').text((books || []).length + ((books || []).length === 1 ? ' result' : ' results'));
+    $('#bulk-select-all').prop('checked', false);
+    syncSelectionUI();
   }
 
   function showRowStatus(card, message, isError) {
@@ -321,6 +336,7 @@ $(function () {
   function searchBooks(term) {
     $('#bulk-status').text('Searching...');
     $('#bulk-results').empty().addClass('loading');
+    selection = {};
     postJSON('/admin/bulk/search', {term: term, filters: activeFilters()})
       .done(function (books) {
         $('#bulk-results').removeClass('loading');
@@ -640,6 +656,73 @@ $(function () {
   });
 
   // ---- events -------------------------------------------------------------
+
+  // ---- bulk selection -----------------------------------------------------
+
+  function selectedIds() {
+    return Object.keys(selection).filter(function (id) { return selection[id]; });
+  }
+
+  function syncSelectionUI() {
+    var count = selectedIds().length;
+    $('#bulk-selected-count').text(count + (count === 1 ? ' selected' : ' selected'));
+    $('#bulk-action-go').prop('disabled', count === 0);
+  }
+
+  $(document).on('change', '.bulk-select', function () {
+    var id = String(this.value);
+    if (this.checked) { selection[id] = true; } else { delete selection[id]; }
+    syncSelectionUI();
+  });
+
+  $('#bulk-select-all').on('change', function () {
+    $('.bulk-select').each(function () {
+      var id = String(this.value);
+      this.checked = $('#bulk-select-all').is(':checked');
+      if (this.checked) { selection[id] = true; } else { delete selection[id]; }
+    });
+    syncSelectionUI();
+  });
+
+  $('#bulk-action').on('change', function () {
+    // Nothing to do; the action is read at Go time.
+  });
+
+  $('#bulk-action-go').on('click', function () {
+    var action = $('#bulk-action').val();
+    var ids = selectedIds();
+    if (!action || !ids.length) { return; }
+    if (action === 'delete') {
+      var confirmText = ids.length === 1
+        ? 'Delete this book? This cannot be undone.'
+        : 'Delete ' + ids.length + ' books? This cannot be undone.';
+      if (!window.confirm(confirmText)) { return; }
+      var button = this;
+      button.disabled = true;
+      $('#bulk-status').text('Deleting...');
+      postJSON('/admin/bulk/delete', {book_ids: ids})
+        .done(function (resp) {
+          button.disabled = false;
+          var ok = 0;
+          var failures = [];
+          (resp.results || []).forEach(function (r) {
+            if (r.success) { ok++; } else { failures.push(r.message || 'Book ' + r.book_id); }
+          });
+          selection = {};
+          $('#bulk-select-all').prop('checked', false);
+          if (failures.length) {
+            $('#bulk-status').text(ok + ' deleted, ' + failures.length + ' failed: ' + failures.join('; '));
+          } else {
+            $('#bulk-status').text(ok + (ok === 1 ? ' book' : ' books') + ' deleted');
+          }
+          refreshResults();
+        })
+        .fail(function (xhr) {
+          button.disabled = false;
+          $('#bulk-status').text(extractError(xhr));
+        });
+    }
+  });
 
   $('#bulk-search').on('submit', function (e) {
     e.preventDefault();

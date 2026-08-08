@@ -34,8 +34,28 @@
         <input type="checkbox" class="bulk-filter-input" value="missing_cover">
         {{ _('Cover') }}
       </label>
+      <label class="bulk-pill">
+        <input type="checkbox" class="bulk-filter-input" value="missing_format">
+        {{ _('Format') }}
+      </label>
     </fieldset>
   </form>
+
+  <div class="bulk-toolbar" id="bulk-toolbar">
+    <label class="bulk-pill bulk-pill-select">
+      <input type="checkbox" id="bulk-select-all">
+      {{ _('Select all') }}
+    </label>
+    <span id="bulk-selected-count" class="bulk-selected-count" role="status" aria-live="polite">{{ _('0 selected') }}</span>
+    <label class="sr-only" for="bulk-action">{{ _('Bulk action') }}</label>
+    <select id="bulk-action" class="form-control bulk-action-select">
+      <option value="">{{ _('Choose action') }}</option>
+      <option value="delete">{{ _('Delete selected books') }}</option>
+    </select>
+    <button type="button" id="bulk-action-go" class="btn btn-danger bulk-action-go" disabled>
+      {{ _('Go') }}
+    </button>
+  </div>
 
   <details class="bulk-patterns" id="bulk-patterns-panel">
     <summary class="bulk-patterns-summary">{{ _('Filename patterns') }}</summary>

@@ -32,7 +32,7 @@ from . import api
 from .. import calibre_db, config, logger, ub
 from .. import db
 from .. import helper
-from ..constants import STABLE_VERSION
+from ..constants import STABLE_VERSION, PHYSICAL_FORMAT
 from ..editbooks import (
     edit_book_comments, edit_book_languages, edit_book_publisher, edit_book_ratings,
     edit_book_series, edit_book_series_index, edit_book_tags, handle_author_on_edit,
@@ -130,6 +130,20 @@ class SyncWriteResult(BaseModel):
     message: str
 
 
+class ContentServerReport(BaseModel):
+    url: str = ""
+    online: bool = False
+    library_name: str = ""
+
+
+class ContentServerStatusOut(BaseModel):
+    url: str = ""
+    online: bool = False
+    library_name: str = ""
+    last_seen: str = ""
+    last_reported_by: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Serialization helpers
 # ---------------------------------------------------------------------------
@@ -151,7 +165,7 @@ def _book_to_dict(book) -> dict:
     publisher = publishers[0] if publishers else ""
     rating = (book.ratings[0].rating / 2.0) if book.ratings else 0.0
     comments = book.comments[0].text if book.comments else ""
-    formats = [d.format for d in book.data]
+    formats = [d.format for d in book.data if d.format != PHYSICAL_FORMAT]
     return {
         "id": book.id,
         "uuid": book.uuid or "",
@@ -217,6 +231,36 @@ def status(user=Depends(require_api_key)):
         "version": STABLE_VERSION,
         "library_books": book_count,
         "server_time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+@router.get("/content-server", response_model=ContentServerStatusOut)
+def get_content_server(user=Depends(require_api_key)):
+    with _app_context():
+        row = ub.get_content_server_status()
+    return {
+        "url": row.url or "",
+        "online": bool(row.online),
+        "library_name": row.library_name or "",
+        "last_seen": _fmt(row.last_seen),
+        "last_reported_by": row.last_reported_by or "",
+    }
+
+
+@router.post("/content-server", response_model=ContentServerStatusOut)
+def report_content_server(report: ContentServerReport, user=Depends(require_api_key)):
+    with _app_context():
+        row = ub.update_content_server_status(report.url, report.online,
+                                              report.library_name,
+                                              reported_by=getattr(user, "name", "?"))
+    log.info("Sync API: content server reported by %s: %s online=%s",
+             getattr(user, "name", "?"), report.url, report.online)
+    return {
+        "url": row.url or "",
+        "online": bool(row.online),
+        "library_name": row.library_name or "",
+        "last_seen": _fmt(row.last_seen),
+        "last_reported_by": row.last_reported_by or "",
     }
 
 

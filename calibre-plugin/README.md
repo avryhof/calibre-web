@@ -29,8 +29,21 @@ Two-way sync between a Calibre desktop library and a Calibre-Web server.
    ./calibre-plugin/build_plugin.sh
    ```
 
-2. In Calibre: **Preferences → Plugins → Load plugin from file**, then pick
-   `calibre-plugin/calibrewebsync.zip`. Restart Calibre.
+2. Install the plugin:
+   - `calibre-customize --add-plugin calibre-plugin/calibrewebsync.zip`, or
+   - In Calibre: **Preferences → Plugins → Load plugin from file**, then pick
+     `calibre-plugin/calibrewebsync.zip`. Restart Calibre.
+
+## Development
+
+The source lives in `calibre-plugin/calibrewebsync/` (`__init__.py`,
+`worker.py`, `config.py`). Calibre loads plugins from a zip with all modules at
+the zip root plus a `plugin-import-name-calibrewebsync.txt` marker (content:
+`calibre_plugins.calibrewebsync`); that marker is what makes Calibre import the
+plugin as `calibre_plugins.calibrewebsync` so the `actual_plugin` reference in
+`__init__.py` resolves. Rebuild with `./calibre-plugin/build_plugin.sh` after
+editing any plugin source, then install via `calibre-customize --add-plugin
+calibrewebsync.zip` or **Preferences → Plugins → Load plugin from file**.
 3. Click the **Calibre-Web Sync** toolbar button (or **Preferences → Plugins →
    Customize plugin**) and enter the server URL and API key. Enable/disable
    push, pull and delete propagation as desired.

@@ -1722,6 +1722,11 @@ def show_book(book_id):
         entry.email_share_list = check_send_to_ereader(entry)
         entry.reader_list = check_read_formats(entry)
 
+        # The PHYSICAL pseudo-format has no file on disk: keep it out of the
+        # download/read lists but expose it as a flag for the template.
+        entry.is_physical = any(d.format == constants.PHYSICAL_FORMAT for d in entry.data)
+        entry.data = [d for d in entry.data if d.format != constants.PHYSICAL_FORMAT]
+
         entry.reader_list_sizes = dict()
         for data in entry.data:
             if data.format.lower() in entry.reader_list:
@@ -1732,12 +1737,26 @@ def show_book(book_id):
             if media_format.format.lower() in constants.EXTENSIONS_AUDIO:
                 entry.audio_entries.append(media_format.format.lower())
 
+        content_link = None
+        try:
+            content_server = ub.get_content_server_status()
+            if content_server and content_server.online and content_server.url:
+                base = content_server.url.strip().rstrip('/')
+                from urllib.parse import urlencode
+                library_id = content_server.library_name or ""
+                content_link = "{}#{}".format(
+                    base, urlencode({'book_id': book_id, 'library_id': library_id,
+                                     'panel': 'book_details'}))
+        except Exception:
+            log.debug("Could not build content server link", exc_info=True)
+
         return render_title_template('detail.html',
                                      entry=entry,
                                      cc=cc,
                                      is_xhr=request.headers.get('X-Requested-With') == 'XMLHttpRequest',
                                      title=entry.title,
                                      books_shelfs=book_in_shelves,
+                                     content_link=content_link,
                                      page="book")
     else:
         log.debug("Selected book is unavailable. File does not exist or is not accessible")

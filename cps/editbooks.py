@@ -394,7 +394,7 @@ def parse_filename_with_pattern(pattern, filename):
     return fields
 
 
-BULK_FILTERS = frozenset({"missing_isbn", "missing_author", "missing_cover"})
+BULK_FILTERS = frozenset({"missing_isbn", "missing_author", "missing_cover", "missing_format"})
 
 
 def _set_book_isbn(book, value):
@@ -438,6 +438,9 @@ def _apply_bulk_filters(query, filters):
             query = query.filter(db.Books.id.notin_(with_author))
         elif key == "missing_cover":
             query = query.filter(db.Books.has_cover == 0)
+        elif key == "missing_format":
+            with_format = calibre_db.session.query(db.Data.book).distinct()
+            query = query.filter(db.Books.id.notin_(with_format))
     return query
 
 
@@ -452,6 +455,7 @@ def _book_for_bulk(book):
     comment = ""
     if book.comments and book.comments[0].text:
         comment = book.comments[0].text[:200]
+    formats = sorted(d.format for d in book.data)
     return {
         "book_id": book.id,
         "title": book.title or "",
@@ -464,6 +468,8 @@ def _book_for_bulk(book):
         "isbn": next((i.val for i in book.identifiers if i.type.lower() == "isbn"), ""),
         "has_cover": bool(book.has_cover),
         "cover_url": url_for("web.get_cover", book_id=book.id) if book.has_cover else "",
+        "formats": formats,
+        "is_physical": constants.PHYSICAL_FORMAT in formats,
         "format": file_format,
         "filename": filename,
         "description": comment,
@@ -741,6 +747,44 @@ def bulk_save():
         calibre_db.session.rollback()
         log.error_or_exception("Bulk edit save failed for book %s: %s", book.id, e)
         return jsonify(error=str(e)), 400
+
+
+@editbook.route("/admin/bulk/delete", methods=["POST"])
+@login_required_if_no_ano
+@edit_required
+def bulk_delete():
+    if not current_user.role_delete_books():
+        return jsonify(error=_("You are missing permissions to delete books")), 403
+    data = request.get_json() or {}
+    book_ids = data.get("book_ids") or []
+    if not isinstance(book_ids, list) or not book_ids:
+        return jsonify(error=_("No books selected")), 400
+    if len(book_ids) > 200:
+        return jsonify(error=_("Too many books selected - limit is 200")), 400
+    results = []
+    for book_id in book_ids:
+        try:
+            book_id = int(book_id)
+        except (TypeError, ValueError):
+            results.append({"book_id": book_id, "success": False, "message": _("Invalid book id")})
+            continue
+        book = calibre_db.get_book(book_id)
+        if not book:
+            results.append({"book_id": book_id, "success": False, "message": _("Book not found")})
+            continue
+        try:
+            result, error = helper.delete_book(book, config.get_book_path(), book_format="")
+            if not result:
+                results.append({"book_id": book_id, "success": False, "message": error or _("Delete failed")})
+                continue
+            delete_whole_book(book_id, book)
+            calibre_db.session.commit()
+            results.append({"book_id": book_id, "success": True, "message": error or ""})
+        except Exception as ex:
+            log.error_or_exception("Bulk edit delete failed for book %s: %s", book_id, ex)
+            calibre_db.session.rollback()
+            results.append({"book_id": book_id, "success": False, "message": str(ex)})
+    return jsonify(results=results)
 
 # Separated from /editbooks so that /editselectedbooks can also use this
 #
@@ -1156,6 +1200,10 @@ def do_edit_book(book_id, upload_formats=None):
             edit_error = True
         # handle cc data
         modify_date |= edit_all_cc_data(book_id, book, to_save)
+
+        # handle the physical-copy pseudo-format
+        physical_wanted = bool(to_save.get("physical_copy"))
+        modify_date |= edit_book_physical(book, physical_wanted)
 
         if to_save.get("pubdate") is not None:
             if to_save.get("pubdate"):
@@ -1602,6 +1650,7 @@ def render_edit_book(book_id):
         lang.language_name = isoLanguages.get_language_name(get_locale(), lang.lang_code)
 
     book.authors = calibre_db.order_authors([book])
+    book.is_physical = any(d.format == constants.PHYSICAL_FORMAT for d in book.data)
 
     author_names = []
     for authr in book.authors:
@@ -1633,6 +1682,21 @@ def render_edit_book(book_id):
                                  conversion_formats=allowed_conversion_formats,
                                  config=config,
                                  source_formats=valid_source_formats)
+
+
+def edit_book_physical(book, wanted):
+    """Add or remove the PHYSICAL pseudo-format row for a book.
+       Returns True if the book changed."""
+    existing = [d for d in book.data if d.format == constants.PHYSICAL_FORMAT]
+    if wanted and not existing:
+        book.data.append(db.Data(book, constants.PHYSICAL_FORMAT, 0, "physical"))
+        return True
+    if not wanted and existing:
+        for d in existing:
+            book.data.remove(d)
+            calibre_db.session.delete(d)
+        return True
+    return False
 
 
 def edit_book_ratings(to_save, book):

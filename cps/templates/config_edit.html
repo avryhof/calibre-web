@@ -47,6 +47,25 @@
             </select>
         </div>
         <div class="form-group">
+          <label for="config_app_mode">{{_('App Mode')}}</label>
+            <select name="config_app_mode" id="config_app_mode" class="form-control"
+                    aria-describedby="app_mode_hint">
+              <option value="production" {% if config.config_app_mode == 'production' %}selected{% endif %}>{{_('Production')}}</option>
+              <option value="test" {% if config.config_app_mode == 'test' %}selected{% endif %}>{{_('Test (preview)')}}</option>
+              <option value="development" {% if config.config_app_mode == 'development' %}selected{% endif %}>{{_('Development')}}</option>
+            </select>
+          <small id="app_mode_hint" class="form-text text-muted">{{_('Test and development modes allow previewing API keys and run scheduled tasks immediately. Production is the recommended default.')}}</small>
+        </div>
+        <div class="form-group">
+          <label for="config_calibre_content_server">{{_('Calibre desktop content server address')}}</label>
+          <input type="text" class="form-control" id="config_calibre_content_server"
+                 name="config_calibre_content_server"
+                 value="{% if config.config_calibre_content_server != None %}{{ config.config_calibre_content_server }}{% endif %}"
+                 placeholder="http://localhost:8080" autocomplete="off"
+                 aria-describedby="content_server_hint">
+          <small id="content_server_hint" class="form-text text-muted">{{_('Optional. Base URL of the Calibre desktop content server, used to link synced books. Updated automatically by the sync plugin when it reports in.')}}</small>
+        </div>
+        <div class="form-group">
           <label for="config_trustedhosts">{{_('Trusted Hosts (Comma Separated)')}}</label>
           <input type="text" class="form-control" id="config_trustedhosts" name="config_trustedhosts" value="{% if config.trustedhosts != None %}{{ config.config_trustedhosts }}{% endif %}" autocomplete="off">
         </div>

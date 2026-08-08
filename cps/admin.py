@@ -247,7 +247,7 @@ def api_keys():
             if user is None:
                 flash(_("Select a user for the API key"), category="error")
             else:
-                _, raw_key = ub.create_api_key(user.id, name)
+                _key_id, raw_key = ub.create_api_key(user.id, name)
                 if raw_key:
                     session["new_api_key"] = raw_key
                     session["new_api_key_name"] = name or user.name
@@ -262,9 +262,24 @@ def api_keys():
     keys = ub.list_api_keys()
     new_key = session.pop("new_api_key", None)
     new_key_name = session.pop("new_api_key_name", "")
+    content_server = ub.get_content_server_status()
     return render_title_template("api_keys.html", keys=keys, allUser=all_user,
                                  new_key=new_key, new_key_name=new_key_name,
+                                 content_server=content_server,
                                  config=config, title=_("API Keys"), page="admin")
+
+
+@admi.route("/admin/plugin/calibrewebsync")
+@user_login_required
+@admin_required
+def download_sync_plugin():
+    plugin_path = os.path.join(constants.BASE_DIR, "calibre-plugin", "calibrewebsync.zip")
+    if not os.path.isfile(plugin_path):
+        abort(404)
+    return send_from_directory(os.path.dirname(plugin_path),
+                               os.path.basename(plugin_path),
+                               as_attachment=True,
+                               download_name="calibrewebsync.zip")
 
 
 @admi.route("/admin/dbconfig", methods=["GET", "POST"])
@@ -1824,6 +1839,16 @@ def _configuration_update_helper():
         reboot_required |= _config_string(to_save, "config_certfile")
         if config.config_certfile and not os.path.isfile(config.config_certfile):
             return _configuration_result(_('Certfile Location is not Valid, Please Enter Correct Path'))
+
+        # App mode (production/test/development) and Calibre desktop content server
+        _config_string(to_save, "config_app_mode")
+        if config.config_app_mode not in ('production', 'test', 'development'):
+            config.config_app_mode = 'production'
+        from cps import constants as _constants
+        if _constants.APP_MODE != config.config_app_mode:
+            _constants.APP_MODE = config.config_app_mode
+            log.info("App mode set to %s via admin settings", config.config_app_mode)
+        _config_string(to_save, "config_calibre_content_server")
 
         _config_checkbox_int(to_save, "config_uploading")
         _config_checkbox_int(to_save, "config_unicode_filename")

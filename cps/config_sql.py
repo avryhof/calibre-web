@@ -176,6 +176,9 @@ class _Settings(_Base):
     config_limiter_options = Column(String, default="")
     config_check_extensions = Column(Boolean, default=True)
 
+    config_app_mode = Column(String, default='production')
+    config_calibre_content_server = Column(String, default='')
+
     def __repr__(self):
         return self.__class__.__name__
 

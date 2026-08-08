@@ -348,8 +348,23 @@ class APIKey(Base):
     user = relationship('User', backref='api_keys')
     name = Column(String(128), default="")
     key_hash = Column(String, nullable=False, unique=True)
+    # Raw key value. Only populated when the app runs in development/test mode,
+    # so administrators can view keys during development. Never populated in
+    # production mode.
+    key_value = Column(String, nullable=True)
     created = Column(DateTime, default=datetime.now)
     last_used = Column(DateTime, nullable=True)
+
+
+class ContentServerStatus(Base):
+    __tablename__ = 'content_server_status'
+
+    id = Column(Integer, primary_key=True)
+    url = Column(String, default="")
+    online = Column(Boolean, default=False)
+    library_name = Column(String, default="")
+    last_seen = Column(DateTime, nullable=True)
+    last_reported_by = Column(String, default="")
 
 
 class User_Sessions(Base):
@@ -644,6 +659,26 @@ def add_missing_tables(engine, _session):
         PhysicalLocation.__table__.create(bind=engine)
     if not engine.dialect.has_table(engine.connect(), "filename_pattern"):
         FilenamePattern.__table__.create(bind=engine)
+    if not engine.dialect.has_table(engine.connect(), "content_server_status"):
+        ContentServerStatus.__table__.create(bind=engine)
+
+
+# Add columns introduced after the initial api_key table creation (idempotent)
+def migrate_api_key_columns(engine, _session):
+    if not engine.dialect.has_table(engine.connect(), "api_key"):
+        return
+    try:
+        existing = {col['name'] for col in inspect(engine).get_columns("api_key")}
+    except Exception:
+        return
+    if "key_value" not in existing:
+        try:
+            with engine.connect() as conn:
+                trans = conn.begin()
+                conn.execute(text("ALTER TABLE api_key ADD COLUMN key_value VARCHAR"))
+                trans.commit()
+        except exc.OperationalError:  # Database is not writeable
+            _session.rollback()
 
 
 # Add columns introduced after the initial physical_book table creation (idempotent)
@@ -713,6 +748,7 @@ def migrate_Database(_session):
     migrate_bookshop_sidebar(engine, _session)
     migrate_bulk_sidebar(engine, _session)
     migrate_filename_patterns(engine, _session)
+    migrate_api_key_columns(engine, _session)
 
 
 def migrate_physical_book_sidebar(engine, _session):
@@ -951,10 +987,14 @@ def _hash_api_key(raw_key):
 
 def create_api_key(user_id, name=""):
     """Create a new API key for a user. Returns (key_id, raw_key).
-       The raw key is only returned once; only its hash is stored."""
+       The raw key is only returned once; only its hash is stored. In
+       development/test mode the raw key is also stored so it can be viewed
+       later from the admin API keys page."""
     import secrets
     raw_key = secrets.token_urlsafe(32)
-    api_key = APIKey(user_id=user_id, name=name[:128] or "", key_hash=_hash_api_key(raw_key))
+    store_raw = constants.APP_MODE in ('development', 'test')
+    api_key = APIKey(user_id=user_id, name=name[:128] or "", key_hash=_hash_api_key(raw_key),
+                     key_value=raw_key if store_raw else None)
     session.add(api_key)
     session.commit()
     return api_key.id, raw_key
@@ -971,6 +1011,27 @@ def delete_api_key(key_id):
 
 def list_api_keys():
     return session.query(APIKey).all()
+
+
+def get_content_server_status():
+    """Return the single ContentServerStatus row (creating it if needed)."""
+    row = session.query(ContentServerStatus).first()
+    if row is None:
+        row = ContentServerStatus(id=1)
+        session.add(row)
+        session.commit()
+    return row
+
+
+def update_content_server_status(url, online, library_name="", reported_by=""):
+    row = get_content_server_status()
+    row.url = (url or "").strip()
+    row.online = bool(online)
+    row.library_name = (library_name or "").strip()
+    row.last_seen = datetime.now(timezone.utc)
+    row.last_reported_by = (reported_by or "")[:128]
+    session_commit("Content server status updated")
+    return row
 
 
 def verify_api_key(raw_key):

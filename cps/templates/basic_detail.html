@@ -22,10 +22,12 @@
     <div>
       <h2>Download</h2>
         {% for format in entry.data %}
+          {% if format.format != 'PHYSICAL' %}
           <p>
             <a href="{{ url_for('web.download_link', book_id=entry.id, book_format=format.format|lower, anyname=entry.id|string+'.'+format.format|lower) }}">
               {{ format.format }} ({{ format.uncompressed_size|filesizeformat }})</a>
           </p>
+          {% endif %}
         {% endfor %}
     </div>
   {% endif %}

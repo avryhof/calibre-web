@@ -13,9 +13,11 @@
     {% if book.data|length > 1 %}
       <div class="text-center more-stuff"><h4>{{_('Delete formats:')}}</h4>
       {% for file in book.data %}
+        {% if file.format != 'PHYSICAL' %}
         <div class="form-group">
           <button type="button" class="btn btn-danger" id="delete_format" data-toggle="modal" data-delete-id="{{ book.id }}" data-delete-format="{{ file.format }}" data-target="#deleteModal">{{_('Delete')}} - {{file.format}}</button>
         </div>
+        {% endif %}
       {% endfor %}
       </div>
     {% endif %}
@@ -70,6 +72,13 @@
     <div class="form-group">
       <label for="title">{{_('Book Title')}}</label>
       <input type="text" class="form-control" name="title" id="title" value="{{book.title}}">
+    </div>
+    <div class="checkbox">
+      <label for="physical_copy">
+        <input type="checkbox" name="physical_copy" id="physical_copy" value="1"
+               {% if book.is_physical %}checked{% endif %}>
+        {{_('I own a physical copy of this book')}}
+      </label>
     </div>
     <div class="text-center">
         <button type="button" class="btn btn-default" id="xchange" ><span class="glyphicon glyphicon-arrow-up"></span><span class="glyphicon glyphicon-arrow-down"></span></button>
